@@ -26,6 +26,10 @@ client = CastorEDC.new(client_id: "...", client_secret: "...")
 {:ok, %{study: study, repeating_data: repeating_data, surveys: surveys}} =
   CastorEDC.Dux.data_points(client, study_id, format: :wide, dir: "data")
 
+# The same frames over a batch export's files: a few requests however big the study.
+{:ok, %{study: study, repeating_data: repeating_data, surveys: surveys}} =
+  CastorEDC.Dux.participant_data(client, study_id, dir: "data")
+
 # The study's participants, fields, sites and options.
 {:ok, participants} = CastorEDC.Dux.participants(client, study_id, dir: "data")
 {:ok, fields} = CastorEDC.Dux.fields(client, study_id, dir: "data")
