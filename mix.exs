@@ -11,6 +11,11 @@ defmodule CastorEDC.Dux.MixProject do
       elixir: "~> 1.20",
       description: "Castor EDC study data as Dux dataframes, backed by DuckDB.",
       start_permanent: Mix.env() == :prod,
+      dialyzer: [
+        plt_local_path: "priv/plts",
+        plt_core_path: "priv/plts",
+        ignore_warnings: ".dialyzer_ignore.exs"
+      ],
       package: package(),
       deps: deps()
     ]
@@ -35,7 +40,8 @@ defmodule CastorEDC.Dux.MixProject do
   defp deps do
     [
       {:styler, "~> 1.12", only: [:dev, :test], runtime: false},
-      {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4.8", only: [:dev, :test], runtime: false}
     ]
   end
 end

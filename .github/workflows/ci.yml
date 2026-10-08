@@ -22,6 +22,7 @@ jobs:
           path: |
             deps
             _build
+            priv/plts
           key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-${{ hashFiles('mix.lock') }}
           restore-keys: mix-${{ runner.os }}-${{ hashFiles('.tool-versions') }}-
       - name: Install mix dependencies
@@ -32,3 +33,5 @@ jobs:
           MIX_ENV: test
       - name: Run tests
         run: mix test
+      - name: Run Dialyzer
+        run: mix dialyzer
