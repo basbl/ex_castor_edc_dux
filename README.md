@@ -25,4 +25,10 @@ client = CastorEDC.new(client_id: "...", client_secret: "...")
 # A frame per study, repeating data and survey, with a column per variable.
 {:ok, %{study: study, repeating_data: repeating_data, surveys: surveys}} =
   CastorEDC.Dux.data_points(client, study_id, format: :wide, dir: "data")
+
+# The study's participants, fields, sites and options.
+{:ok, participants} = CastorEDC.Dux.participants(client, study_id, dir: "data")
+{:ok, fields} = CastorEDC.Dux.fields(client, study_id, dir: "data")
+{:ok, sites} = CastorEDC.Dux.sites(client, study_id, dir: "data")
+{:ok, options} = CastorEDC.Dux.option_groups(client, study_id, dir: "data")
 ```

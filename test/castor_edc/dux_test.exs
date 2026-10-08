@@ -145,4 +145,114 @@ defmodule CastorEDC.DuxTest do
   defp value(rows, participant, variable) do
     Enum.find(rows, &(&1["participant_id"] == participant and &1["variable_name"] == variable))
   end
+
+  describe "participants/3" do
+    test "writes a row per participant", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.participants(Study.client(), Study.id(), dir: dir)
+
+      assert {"created_on", "TIMESTAMP WITH TIME ZONE"} in types(frame)
+      assert {"progress", "DOUBLE"} in types(frame)
+
+      assert [p1, p2] = rows(frame)
+
+      assert %{
+               "participant_id" => "P1",
+               "site_id" => "site-1",
+               "site_name" => "Amsterdam",
+               "status" => "open",
+               "participant_status" => "Included",
+               "progress" => 100.0,
+               "locked" => false,
+               "randomization_group" => 2
+             } = p1
+
+      assert p1["created_on"] == ~N[2026-10-07 19:06:33.000000]
+      assert %{"participant_id" => "P2", "site_name" => nil, "participant_status" => nil, "progress" => 12.5} = p2
+    end
+  end
+
+  describe "fields/3" do
+    test "writes a row per field that holds values, in the study's order", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.fields(Study.client(), Study.id(), dir: dir)
+
+      assert frame |> Dux.to_columns() |> Map.fetch!("variable_name") ==
+               ~w(weight year visit seen time sex family note bmi sys gad)
+
+      assert %{
+               "field_id" => "f-weight",
+               "value_type" => "number",
+               "context" => "study",
+               "parent_name" => "Screening",
+               "field_number" => 1,
+               "required" => true,
+               "hidden" => false,
+               "units" => "kg",
+               "min" => 30.0,
+               "max" => 250.5
+             } = frame |> Dux.to_rows() |> hd()
+
+      assert %{"value_type" => "list(string)", "option_group_id" => "og-family"} =
+               frame |> Dux.to_rows() |> Enum.find(&(&1["variable_name"] == "family"))
+    end
+
+    test "returns the error of a failed request", %{tmp_dir: dir} do
+      client = Study.client(%{"/form" => CastorEDC.Test.json(%{"detail" => "Forbidden"}, status: 403)})
+      assert {:error, %CastorEDC.Error{status: 403}} = CastorEDC.Dux.fields(client, Study.id(), dir: dir)
+    end
+  end
+
+  describe "sites/3" do
+    test "writes a row per site", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.sites(Study.client(), Study.id(), dir: dir)
+
+      assert rows(frame, ["site_id"]) == [
+               %{
+                 "site_id" => "site-1",
+                 "name" => "Amsterdam",
+                 "abbreviation" => "AMS",
+                 "code" => nil,
+                 "country_id" => 169,
+                 "order" => 0,
+                 "deleted" => nil
+               },
+               %{
+                 "site_id" => "site-2",
+                 "name" => "Utrecht",
+                 "abbreviation" => nil,
+                 "code" => nil,
+                 "country_id" => nil,
+                 "order" => nil,
+                 "deleted" => true
+               }
+             ]
+    end
+
+    test "returns the error of a failed request", %{tmp_dir: dir} do
+      client = Study.client(%{"/site" => CastorEDC.Test.json(%{"detail" => "Forbidden"}, status: 403)})
+      assert {:error, %CastorEDC.Error{status: 403}} = CastorEDC.Dux.sites(client, Study.id(), dir: dir)
+    end
+  end
+
+  describe "option_groups/3" do
+    test "writes a row per option", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.option_groups(Study.client(), Study.id(), dir: dir)
+
+      assert rows(frame, ["value"]) == [
+               %{
+                 "option_group_id" => "og-sex",
+                 "option_group_name" => "Sex",
+                 "value" => "0",
+                 "name" => "Male",
+                 "order" => 0
+               },
+               %{
+                 "option_group_id" => "og-sex",
+                 "option_group_name" => "Sex",
+                 "value" => "1",
+                 "name" => "Female",
+                 "order" => 1
+               }
+             ]
+    end
+  end
 end
