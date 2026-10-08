@@ -34,6 +34,7 @@ defmodule CastorEDC.Dux.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:styler, "~> 1.12", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false}
     ]
   end
