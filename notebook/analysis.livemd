@@ -1,0 +1,102 @@
+# Analysing a Castor EDC study with Dux
+
+```elixir
+Mix.install([
+  {:ex_castor_edc_dux, "~> 0.1.0"},
+  {:kino_dux, "~> 0.2.0"}
+])
+```
+
+## Introduction
+
+This notebook loads a study's data into Dux frames, backed by DuckDB, and takes a first look at it.
+The data goes to Parquet files as it streams in from the API, so it never has to fit in memory, and every frame's column types come from the study's structure.
+
+## Connecting
+
+You need a client ID and a client secret, which you can create on your [account settings page](https://data.castoredc.com/account/settings), and the ID of a study they have access to.
+
+```elixir
+regions = [
+  {"https://data.castoredc.com", "NL"},
+  {"https://uk.castoredc.com", "UK"},
+  {"https://us.castoredc.com", "US"},
+  {"https://au.castoredc.com", "AU"}
+]
+
+region = Kino.Input.select("Region", regions) |> Kino.render()
+client_id = Kino.Input.text("Client ID") |> Kino.render()
+client_secret = Kino.Input.password("Client secret") |> Kino.render()
+study_id = Kino.Input.text("Study ID") |> Kino.render()
+
+Kino.nothing()
+```
+
+The frames' files go in one directory; remove it when you're done.
+
+```elixir
+client =
+  CastorEDC.new(
+    client_id: Kino.Input.read(client_id),
+    client_secret: Kino.Input.read(client_secret),
+    base_url: Kino.Input.read(region)
+  )
+
+study_id = Kino.Input.read(study_id)
+dir = Path.join(System.tmp_dir!(), "castor_edc_#{study_id}")
+```
+
+## The study's structure
+
+`fields/3` has a row per field that holds values, in the order the study shows them: where it collects data, its type, and its option group.
+`option_groups/3` has a row per option, to join on `option_group_id`.
+
+```elixir
+{:ok, fields} = CastorEDC.Dux.fields(client, study_id, dir: dir)
+{:ok, options} = CastorEDC.Dux.option_groups(client, study_id, dir: dir)
+
+fields
+```
+
+## Participants and sites
+
+```elixir
+{:ok, participants} = CastorEDC.Dux.participants(client, study_id, dir: dir)
+{:ok, sites} = CastorEDC.Dux.sites(client, study_id, dir: dir)
+
+participants
+|> Dux.join(Dux.select(sites, [:site_id, :name]), on: :site_id, how: :left)
+|> Dux.group_by(:name)
+|> Dux.summarise_with(participants: "COUNT(participant_id)", mean_progress: "AVG(progress)")
+```
+
+## Collected data
+
+`participant_data/3` runs a batch export and queries its CSV files directly: a frame for the study's values, with a row per participant, and one for each repeating data and survey, with a row per instance.
+It takes a few requests, however big the study is.
+
+```elixir
+{:ok, %{study: study, repeating_data: repeating_data, surveys: surveys}} =
+  CastorEDC.Dux.participant_data(client, study_id, dir: dir, missing_columns: true)
+
+study
+```
+
+Values marked missing are nulls, with their codes (95 to 99) in the `<variable>_missing` columns.
+
+```elixir
+Map.keys(repeating_data) ++ Map.keys(surveys)
+```
+
+`data_points/3` reads the same values through the API instead, page by page, with a row per value, which suits filtering and pivoting:
+
+```elixir
+{:ok, values} = CastorEDC.Dux.data_points(client, study_id, dir: dir)
+
+values
+|> Dux.filter_with("missing IS NOT NULL")
+|> Dux.group_by([:variable_name, :missing])
+|> Dux.summarise_with(count: "COUNT(*)")
+```
+
+With `format: :wide`, it gives the same shape as `participant_data/3`, with a column per variable.
