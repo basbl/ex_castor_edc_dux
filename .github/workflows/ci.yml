@@ -33,7 +33,5 @@ jobs:
           MIX_ENV: test
       - name: Run tests with coverage
         run: mix coveralls
-      - name: Audit dependencies
-        run: mix hex.audit && mix deps.audit
-      - name: Run Dialyzer
-        run: mix dialyzer
+      - name: Check quality
+        run: mix quality

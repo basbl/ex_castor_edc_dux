@@ -17,6 +17,7 @@ defmodule CastorEDC.Dux.MixProject do
         plt_core_path: "priv/plts",
         ignore_warnings: ".dialyzer_ignore.exs"
       ],
+      aliases: aliases(),
       docs: docs(),
       package: package(),
       deps: deps()
@@ -26,6 +27,8 @@ defmodule CastorEDC.Dux.MixProject do
   def cli do
     [
       preferred_envs: [
+        precommit: :test,
+        quality: :dev,
         coveralls: :test,
         "coveralls.detail": :test,
         "coveralls.html": :test
@@ -66,6 +69,22 @@ defmodule CastorEDC.Dux.MixProject do
       {:dialyxir, "~> 1.4.8", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1.5", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40.4", only: :dev, runtime: false}
+    ]
+  end
+
+  defp aliases do
+    [
+      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "credo --strict", "coveralls"],
+      quality: [
+        # hex.audit has to run first: once another task has loaded the
+        # project's code paths, Mix no longer finds tasks from the Hex archive
+        "hex.audit",
+        "format --check-formatted",
+        "credo --strict",
+        "dialyzer",
+        "deps.audit",
+        "docs --warnings-as-errors"
+      ]
     ]
   end
 end
