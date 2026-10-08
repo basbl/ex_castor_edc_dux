@@ -17,6 +17,7 @@ defmodule CastorEDC.Dux.MixProject do
         plt_core_path: "priv/plts",
         ignore_warnings: ".dialyzer_ignore.exs"
       ],
+      docs: docs(),
       package: package(),
       deps: deps()
     ]
@@ -47,6 +48,15 @@ defmodule CastorEDC.Dux.MixProject do
     ]
   end
 
+  defp docs do
+    [
+      main: "CastorEDC.Dux",
+      source_ref: "v#{@version}",
+      source_url: @source_url,
+      extras: ["README.md", "CHANGELOG.md"]
+    ]
+  end
+
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
@@ -54,7 +64,8 @@ defmodule CastorEDC.Dux.MixProject do
       {:styler, "~> 1.12", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.8", only: [:dev, :test], runtime: false},
-      {:mix_audit, "~> 2.1.5", only: [:dev, :test], runtime: false}
+      {:mix_audit, "~> 2.1.5", only: [:dev, :test], runtime: false},
+      {:ex_doc, "~> 0.40.4", only: :dev, runtime: false}
     ]
   end
 end
