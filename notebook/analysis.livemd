@@ -62,6 +62,7 @@ dir = Path.join(System.tmp_dir!(), "castor_edc_#{study_id}")
 {:ok, options} = CastorEDC.Dux.option_groups(client, study_id, dir: dir)
 
 fields
+|> Dux.compute()
 ```
 
 ## Participants and sites
@@ -74,6 +75,7 @@ participants
 |> Dux.join(Dux.select(sites, [:site_id, :name]), on: :site_id, how: :left)
 |> Dux.group_by(:name)
 |> Dux.summarise_with(participants: "COUNT(participant_id)", mean_progress: "AVG(progress)")
+|> Dux.compute()
 ```
 
 ## Collected data
@@ -86,6 +88,7 @@ It takes a few requests, however big the study is.
   CastorEDC.Dux.participant_data(client, study_id, dir: dir, missing_columns: true)
 
 study
+|> Dux.compute()
 ```
 
 Values marked missing are nulls, with their codes (95 to 99) in the `<variable>_missing` columns.
@@ -103,6 +106,7 @@ values
 |> Dux.filter_with("missing IS NOT NULL")
 |> Dux.group_by([:variable_name, :missing])
 |> Dux.summarise_with(count: "COUNT(*)")
+|> Dux.compute()
 ```
 
 With `format: :wide`, it gives the same shape as `participant_data/3`, with a column per variable.
