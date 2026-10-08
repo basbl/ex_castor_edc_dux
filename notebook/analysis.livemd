@@ -1,8 +1,14 @@
 # Analysing a Castor EDC study with Dux
 
 ```elixir
+# The checkout this notebook is in, and ex_castor_edc checked out next to it
+# (or where CASTOR_EDC_PATH says). Outside a checkout, use
+# {:ex_castor_edc_dux, "~> 0.1.0"} instead.
+castor_edc = System.get_env("CASTOR_EDC_PATH", Path.expand("../../ex_castor_edc", __DIR__))
+
 Mix.install([
-  {:ex_castor_edc_dux, "~> 0.1.0"},
+  {:ex_castor_edc_dux, path: Path.expand("..", __DIR__)},
+  {:ex_castor_edc, path: castor_edc, override: true},
   {:kino_dux, "~> 0.2.0"}
 ])
 ```
