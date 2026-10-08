@@ -31,7 +31,7 @@ jobs:
         run: mix compile --warnings-as-errors
         env:
           MIX_ENV: test
-      - name: Run tests
-        run: mix test
+      - name: Run tests with coverage
+        run: mix coveralls
       - name: Run Dialyzer
         run: mix dialyzer
