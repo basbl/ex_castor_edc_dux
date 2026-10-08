@@ -9,6 +9,13 @@ $ mix deps.get
 $ lefthook install
 ```
 
+The package builds on the released `ex_castor_edc`. To develop both together, point `CASTOR_EDC_PATH` at a checkout of it, and Mix uses that instead:
+
+```console
+$ export CASTOR_EDC_PATH=../ex_castor_edc
+$ mix deps.get
+```
+
 [lefthook](https://lefthook.dev) installs a pre-commit hook that runs `mix precommit`, so every commit is compiled, formatted, linted and tested before it's made.
 
 ## Checks
