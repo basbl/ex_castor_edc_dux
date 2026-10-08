@@ -89,6 +89,9 @@ defmodule CastorEDC.DuxTest do
 
       assert %{"GAD-7" => gad} = surveys
       assert rows(gad) == [%{"participant_id" => "P2", "site_id" => "site-2", "instance_id" => "si-1", "gad" => "3"}]
+
+      assert dir |> File.ls!() |> Enum.sort() ==
+               ~w(repeating_data_rd-1.parquet study.parquet survey_survey-1.parquet)
     end
 
     test "adds a column with the missing-value code of each variable when asked", %{tmp_dir: dir} do

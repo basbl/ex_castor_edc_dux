@@ -67,9 +67,11 @@ defmodule CastorEDC.Dux do
 
   With `format: :wide`, a `t:wide/0` map of frames: one for the study's
   values, with a row per participant, and one for each repeating data and
-  survey, with a row per instance. After `participant_id` and `site_id`
-  (and `instance_id` for repeating data and surveys) comes a column per
-  variable, in the order the study shows them, typed by its field:
+  survey, with a row per instance, written to `study.parquet`,
+  `repeating_data_<id>.parquet` and `survey_<id>.parquet`. After
+  `participant_id` and `site_id` (and `instance_id` for repeating data and
+  surveys) comes a column per variable, in the order the study shows
+  them, typed by its field:
 
   | Field type | Type |
   | --- | --- |
@@ -349,9 +351,9 @@ defmodule CastorEDC.Dux do
       |> Enum.group_by(&{&1.source, &1.parent_id})
 
     frames =
-      for {{{context, parent_id} = key, columns}, index} <- Enum.with_index(groups(schema, sources)) do
+      for {{context, parent_id} = key, columns} <- groups(schema, sources) do
         rows = Map.get(rows, key, [])
-        frame = frame(context, columns, rows, missing_columns, dir, "#{context}_#{index}")
+        frame = frame(context, columns, rows, missing_columns, dir, file_name(context, parent_id))
         {context, parent_id, parent_name(columns), frame}
       end
 
@@ -362,6 +364,10 @@ defmodule CastorEDC.Dux do
     }
   end
 
+  # study.parquet, and repeating_data_<id>.parquet or survey_<id>.parquet.
+  defp file_name(:study, _parent_id), do: "study"
+  defp file_name(context, parent_id), do: "#{context}_#{parent_id}"
+
   defp study_frame({:study, _id, _name, frame}), do: frame
   defp study_frame(_other), do: nil
 
@@ -371,7 +377,6 @@ defmodule CastorEDC.Dux do
     |> Map.values()
     |> Enum.filter(&(&1.context in sources))
     |> Enum.group_by(&{&1.context, if(&1.context != :study, do: &1.parent_id)})
-    |> Enum.sort()
   end
 
   defp schema!(client, study_id) do
