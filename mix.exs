@@ -53,7 +53,8 @@ defmodule CastorEDC.Dux.MixProject do
       {:excoveralls, "~> 0.18.5", only: :test},
       {:styler, "~> 1.12", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4.8", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4.8", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1.5", only: [:dev, :test], runtime: false}
     ]
   end
 end
