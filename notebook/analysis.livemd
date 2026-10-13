@@ -1,13 +1,15 @@
 # Analysing a Castor EDC study with Dux
 
 ```elixir
-# The checkout this notebook is in, and ex_castor_edc checked out next to it
-# (or where CASTOR_EDC_PATH says). Outside a checkout, use
-# {:ex_castor_edc_dux, "~> 0.1.0"} instead.
+# The checkout this notebook is in, with ex_castor_edc and ex_castor_edc_kino
+# checked out next to it (or where CASTOR_EDC_PATH and CASTOR_EDC_KINO_PATH
+# say). Outside a checkout, use {:ex_castor_edc_dux, "~> 0.1.0"} instead.
 castor_edc = System.get_env("CASTOR_EDC_PATH", Path.expand("../../ex_castor_edc", __DIR__))
+kino = System.get_env("CASTOR_EDC_KINO_PATH", Path.expand("../../ex_castor_edc_kino", __DIR__))
 
 Mix.install([
   {:ex_castor_edc_dux, path: Path.expand("..", __DIR__)},
+  {:ex_castor_edc_kino, path: kino},
   {:ex_castor_edc, path: castor_edc, override: true},
   {:kino_dux, "~> 0.2.0"}
 ])
@@ -20,35 +22,31 @@ The data goes to Parquet files as it streams in from the API, so it never has to
 
 ## Connecting
 
-You need a client ID and a client secret, which you can create on your [account settings page](https://data.castoredc.com/account/settings), and the ID of a study they have access to.
+Add your API credentials as Livebook secrets: `CASTOR_EDC_CLIENT_ID` and `CASTOR_EDC_CLIENT_SECRET`, which you can create on your [account settings page](https://data.castoredc.com/account/settings).
+The connection cell below reads them from there, so they never appear in the notebook: pick the server your studies are on, and test the connection.
+
+<!-- livebook:{"attrs":"eyJhY2Nlc3NfdG9rZW5fc2VjcmV0IjoiQ0FTVE9SX0VEQ19BQ0NFU1NfVE9LRU4iLCJhdXRoIjoiY3JlZGVudGlhbHMiLCJjbGllbnRfaWRfc2VjcmV0IjoiQ0FTVE9SX0VEQ19DTElFTlRfSUQiLCJjbGllbnRfc2VjcmV0X3NlY3JldCI6IkNBU1RPUl9FRENfQ0xJRU5UX1NFQ1JFVCIsImN1c3RvbV9zZXJ2ZXIiOiIiLCJzZXJ2ZXIiOiJodHRwczovL2RhdGEuY2FzdG9yZWRjLmNvbSIsInZhcmlhYmxlIjoiY2xpZW50In0","chunks":null,"kind":"Elixir.CastorEDC.Kino.ConnectionCell","livebook_object":"smart_cell"} -->
 
 ```elixir
-regions = [
-  {"https://data.castoredc.com", "NL"},
-  {"https://uk.castoredc.com", "UK"},
-  {"https://us.castoredc.com", "US"},
-  {"https://au.castoredc.com", "AU"}
-]
+client =
+  CastorEDC.new(
+    client_id: System.fetch_env!("LB_CASTOR_EDC_CLIENT_ID"),
+    client_secret: System.fetch_env!("LB_CASTOR_EDC_CLIENT_SECRET"),
+    base_url: "https://data.castoredc.com"
+  )
+```
 
-region = Kino.Input.select("Region", regions) |> Kino.render()
-client_id = Kino.Input.text("Client ID") |> Kino.render()
-client_secret = Kino.Input.password("Client secret") |> Kino.render()
-study_id = Kino.Input.text("Study ID") |> Kino.render()
+Then pick the study to look at; the cell lists the studies the client can reach.
 
-Kino.nothing()
+<!-- livebook:{"attrs":"eyJjbGllbnQiOiJjbGllbnQiLCJzdHVkeV9pZCI6IiIsInN0dWR5X25hbWUiOiIiLCJ2YXJpYWJsZSI6InN0dWR5X2lkIn0","chunks":null,"kind":"Elixir.CastorEDC.Kino.StudyCell","livebook_object":"smart_cell"} -->
+
+```elixir
+
 ```
 
 The frames' files go in one directory; remove it when you're done.
 
 ```elixir
-client =
-  CastorEDC.new(
-    client_id: Kino.Input.read(client_id),
-    client_secret: Kino.Input.read(client_secret),
-    base_url: Kino.Input.read(region)
-  )
-
-study_id = Kino.Input.read(study_id)
 dir = Path.join(System.tmp_dir!(), "castor_edc_#{study_id}")
 ```
 
