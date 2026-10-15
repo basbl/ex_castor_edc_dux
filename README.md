@@ -2,7 +2,8 @@
 
 Castor EDC study data as [Dux](https://hexdocs.pm/dux) dataframes, backed by DuckDB.
 
-It builds on [ex_castor_edc](https://github.com/basbl/ex_castor_edc). Data streams from the API into Parquet files, so it never has to fit in memory, and every frame's column types come from the study's structure instead of being inferred from the data.
+It builds on [ex_castor_edc](https://hexdocs.pm/ex_castor_edc).
+Data streams from the API into Parquet files, so it never has to fit in memory, and every frame's column types come from the study's structure instead of being inferred from the data.
 
 ## Installation
 
@@ -36,3 +37,11 @@ client = CastorEDC.new(client_id: "...", client_secret: "...")
 {:ok, sites} = CastorEDC.Dux.sites(client, study_id, dir: "data")
 {:ok, options} = CastorEDC.Dux.option_groups(client, study_id, dir: "data")
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](https://github.com/basbl/ex_castor_edc_dux/blob/main/CONTRIBUTING.md).
+
+## License
+
+MIT; see [LICENSE.md](https://github.com/basbl/ex_castor_edc_dux/blob/main/LICENSE.md).

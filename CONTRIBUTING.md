@@ -9,7 +9,8 @@ $ mix deps.get
 $ lefthook install
 ```
 
-The package builds on the released `ex_castor_edc`. To develop both together, point `CASTOR_EDC_PATH` at a checkout of it, and Mix uses that instead:
+The package builds on the released `ex_castor_edc`.
+To develop both together, point `CASTOR_EDC_PATH` at a checkout of it, and Mix uses that instead:
 
 ```console
 $ export CASTOR_EDC_PATH=../ex_castor_edc
