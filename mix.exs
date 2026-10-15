@@ -4,11 +4,13 @@ defmodule CastorEDC.Dux.MixProject do
   @version "0.1.0-dev"
   @source_url "https://github.com/basbl/ex_castor_edc_dux"
 
-  # Decimal 2.x, which adbc (under Dux) requires, has an advisory fixed only
-  # in Decimal 3: unbounded exponents in Decimal.new. This package never
-  # builds decimals from what the API sends; the list goes when adbc moves
-  # to Decimal 3.
-  @ignored_advisories ~w(GHSA-rhv4-8758-jx7v)
+  # Decimal 2.x, which adbc 0.11 (under Dux 0.3) requires, has two
+  # advisories fixed only in Decimal 3: unbounded exponents in Decimal.new,
+  # and unbounded allocation in Decimal.round/3. This package never builds
+  # decimals from what the API sends, and neither it, Dux nor adbc calls
+  # Decimal.round/3. adbc 0.12 takes Decimal 3; the list goes when Dux
+  # allows it.
+  @ignored_advisories ~w(GHSA-rhv4-8758-jx7v GHSA-6c27-994x-c52f)
 
   def project do
     [
