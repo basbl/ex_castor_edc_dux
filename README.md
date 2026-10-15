@@ -1,5 +1,7 @@
 # CastorEDC.Dux
 
+[![Package](https://img.shields.io/hexpm/v/ex_castor_edc_dux.svg)](https://hex.pm/packages/ex_castor_edc_dux) [![Documentation](http://img.shields.io/badge/hex.pm-docs-green.svg?style=flat)](https://hexdocs.pm/ex_castor_edc_dux) ![CI](https://github.com/basbl/ex_castor_edc_dux/actions/workflows/ci.yml/badge.svg)
+
 Castor EDC study data as [Dux](https://hexdocs.pm/dux) dataframes, backed by DuckDB.
 
 It builds on [ex_castor_edc](https://hexdocs.pm/ex_castor_edc).
