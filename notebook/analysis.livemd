@@ -1,18 +1,19 @@
 # Analysing a Castor EDC study with Dux
 
 ```elixir
-# The checkout this notebook is in, with ex_castor_edc and ex_castor_edc_kino
-# checked out next to it (or where CASTOR_EDC_PATH and CASTOR_EDC_KINO_PATH
-# say). Outside a checkout, use {:ex_castor_edc_dux, "~> 0.1.0"} instead.
-castor_edc = System.get_env("CASTOR_EDC_PATH", Path.expand("../../ex_castor_edc", __DIR__))
-kino = System.get_env("CASTOR_EDC_KINO_PATH", Path.expand("../../ex_castor_edc_kino", __DIR__))
+# To use checkouts instead of the published packages, set
+# CASTOR_EDC_DUX_PATH, CASTOR_EDC_KINO_PATH and CASTOR_EDC_PATH.
+dux = System.get_env("CASTOR_EDC_DUX_PATH")
+kino = System.get_env("CASTOR_EDC_KINO_PATH")
+core = System.get_env("CASTOR_EDC_PATH")
 
-Mix.install([
-  {:ex_castor_edc_dux, path: Path.expand("..", __DIR__)},
-  {:ex_castor_edc_kino, path: kino},
-  {:ex_castor_edc, path: castor_edc, override: true},
-  {:kino_dux, "~> 0.2.0"}
-])
+Mix.install(
+  [
+    if(dux, do: {:ex_castor_edc_dux, path: dux}, else: {:ex_castor_edc_dux, "~> 0.1.0"}),
+    if(kino, do: {:ex_castor_edc_kino, path: kino}, else: {:ex_castor_edc_kino, "~> 0.1.0"}),
+    {:kino_dux, "~> 0.2.0"}
+  ] ++ if(core, do: [{:ex_castor_edc, path: core, override: true}], else: [])
+)
 ```
 
 ## Introduction
