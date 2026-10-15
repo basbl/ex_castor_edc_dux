@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.1.0] - Unreleased
 
 ### Added
 
@@ -14,3 +14,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `CastorEDC.Dux.participant_data/3` runs a participant data export (CSV) and gives lazy frames over its files, a frame per study, repeating data and survey, typed by the export's own variable lists, with checkbox columns named after their options' values and the export's codes for missing values turned into nulls (and, if asked, codes in columns of their own).
   It takes a few requests however big the study is.
 - A Livebook, `notebook/analysis.livemd`, that loads a study into frames and takes a first look at it.
+
+[0.1.0]: https://hex.pm/packages/ex_castor_edc_dux/0.1.0
