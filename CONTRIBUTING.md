@@ -29,10 +29,10 @@ $ mix coveralls   # tests with coverage, failing below the threshold in coverall
 
 CI runs `mix compile --warnings-as-errors`, `mix coveralls` and `mix quality`.
 
-## Notebook
+## Notebooks
 
-`notebook/analysis.livemd` installs the published packages.
-To run it against your checkouts, start Livebook with `CASTOR_EDC_DUX_PATH` set to this checkout, and `CASTOR_EDC_KINO_PATH` and `CASTOR_EDC_PATH` to those of the Kino package and the core if you want them too.
+`notebook/analysis.livemd` and `notebook/charts.livemd` install the published packages.
+To run them against your checkouts, start Livebook with `CASTOR_EDC_DUX_PATH` set to this checkout, and `CASTOR_EDC_KINO_PATH` and `CASTOR_EDC_PATH` to those of the Kino package and the core if you want them too.
 Livebook saves your server and study into the notebook when you save it there; commit only the changes you meant.
 
 ## Commits

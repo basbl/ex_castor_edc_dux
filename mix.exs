@@ -66,7 +66,7 @@ defmodule CastorEDC.Dux.MixProject do
       main: "CastorEDC.Dux",
       source_ref: "v#{@version}",
       source_url: @source_url,
-      extras: ["README.md", "notebook/analysis.livemd", "CHANGELOG.md"]
+      extras: ["README.md", "notebook/analysis.livemd", "notebook/charts.livemd", "CHANGELOG.md"]
     ]
   end
 
