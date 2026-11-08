@@ -20,6 +20,7 @@ defmodule CastorEDC.Dux do
   a request fails.
   """
 
+  alias CastorEDC.Dux.Domains
   alias CastorEDC.Dux.ParticipantData
   alias CastorEDC.Dux.Table
   alias CastorEDC.Tabular
@@ -473,11 +474,85 @@ defmodule CastorEDC.Dux do
     {from, opts} = Keyword.pop(opts, :from)
     into = Path.join(Table.dir(opts[:dir]), "participant_data")
 
-    with {:ok, paths} <- export_paths(client, study_id, from, into, opts) do
+    with {:ok, paths} <- export_paths(client, study_id, from, into, opts, []) do
+      if Domains.grouped?(paths),
+        do: raise(ArgumentError, "the export is grouped by domain; read it with CastorEDC.Dux.domains/3")
+
       repeating_data = Enum.map(CastorEDC.RepeatingData.stream_repeating_data(client, study_id), & &1.name)
       surveys = Enum.map(CastorEDC.Surveys.stream_surveys(client, study_id), & &1.name)
 
       {:ok, ParticipantData.read(paths, repeating_data, surveys, missing_columns)}
+    end
+  rescue
+    error in CastorEDC.Error -> {:error, error}
+  end
+
+  @doc """
+  The study's data from a participant data export grouped by domain, as a
+  lazy frame per domain over the export's CSV files, keyed by the domain's
+  abbreviation, such as `"DM"`.
+
+  A study's domains map its fields, from any visit, repeating data or
+  survey, to the variables of a domain, as in CDISC SDTM. The grouped
+  export, which this runs in CSV and unzips into `<dir>/domains`, has a
+  file per domain with a row per participant per visit, repeating data
+  instance or survey that holds the domain's values. DuckDB reads the
+  files directly, typed by each domain's own variable list:
+
+  | Field type | Type |
+  | --- | --- |
+  | `numeric`, `slider` | `DOUBLE` |
+  | `year` | `BIGINT` |
+  | `date` | `DATE` |
+  | `time` | `TIME` |
+  | `datetime` | `TIMESTAMP` |
+  | `numberdate` | `<variable>_number` of `DOUBLE` and `<variable>_date` of `DATE` |
+  | `checkbox` | a `BOOLEAN` column per option, `<variable>_<option value>` |
+  | others | `VARCHAR` |
+
+  The metadata columns come first, as the export names them, except for
+  `created_on` (the participant's creation): `participant_id`,
+  `participant_status`, `site_abbreviation`, `randomization_id`,
+  `randomization_group`, `randomized_on`, `created_on`, `parent_type`,
+  `parent_name`, `visit_name`, `visit_number` (`BIGINT`), `type` (`Visit`,
+  `Repeating data` or `Survey`) and `name` (the visit or instance). Times
+  are `TIMESTAMP`, in the server's time zone, and the rest `VARCHAR`.
+  Values that don't read as their type are null.
+
+  Values marked missing are nulls; with `missing_columns: true`, their
+  codes go in a `<variable>_missing` column of `SMALLINT` (one per
+  checkbox). With `labels: true`, the export also writes the options'
+  names, and each radio and dropdown gets a `<variable>_label` column of
+  `VARCHAR` holding them.
+
+  ## Options
+
+    * `:filters` - as for `CastorEDC.Export.participant_data/3`, such as
+      `site_ids: [...]`
+    * `:missing_columns` - add the missing-value columns; `false` by
+      default
+    * `:labels` - add the option-name columns; `false` by default
+    * `:dir` - where to put the export's files
+    * `:timeout` and `:poll_interval` - as for `participant_data/3`
+    * `:from` - read a grouped export already made instead of running one,
+      as for `participant_data/3`
+
+  Raises `ArgumentError` when the export given as `:from` isn't grouped.
+  """
+  @spec domains(CastorEDC.client(), String.t(), keyword()) ::
+          {:ok, %{String.t() => Dux.t()}} | {:error, CastorEDC.Error.t()}
+  def domains(client, study_id, opts \\ []) do
+    {missing_columns, opts} = Keyword.pop(opts, :missing_columns, false)
+    {labels, opts} = Keyword.pop(opts, :labels, false)
+    {from, opts} = Keyword.pop(opts, :from)
+    into = Path.join(Table.dir(opts[:dir]), "domains")
+    options = [grouped: true, export_coded_options_as: if(labels, do: "values_and_names", else: "values")]
+
+    with {:ok, paths} <- export_paths(client, study_id, from, into, opts, options) do
+      if not Domains.grouped?(paths),
+        do: raise(ArgumentError, "the export isn't grouped by domain; read it with CastorEDC.Dux.participant_data/3")
+
+      {:ok, Domains.read(paths, missing_columns, labels)}
     end
   rescue
     error in CastorEDC.Error -> {:error, error}
@@ -566,17 +641,17 @@ defmodule CastorEDC.Dux do
 
   @export_options [:filters, :timeout, :poll_interval]
 
-  # The paths of the export's files, from a new export or the one given as
-  # :from.
-  defp export_paths(client, study_id, nil, into, opts) do
-    export_opts = [format: :csv, unzip: true, into: into <> "/"] ++ Keyword.take(opts, @export_options)
+  # The paths of the export's files, from a new export with the export
+  # options given, or the one given as :from.
+  defp export_paths(client, study_id, nil, into, opts, options) do
+    export_opts = [format: :csv, unzip: true, into: into <> "/", options: options] ++ Keyword.take(opts, @export_options)
 
     with {:ok, export} <- CastorEDC.Export.participant_data(client, study_id, export_opts) do
       {:ok, export.files}
     end
   end
 
-  defp export_paths(_client, _study_id, from, into, opts) do
+  defp export_paths(_client, _study_id, from, into, opts, _options) do
     case Keyword.take(opts, @export_options) do
       [] -> {:ok, ParticipantData.paths(from, into)}
       given -> raise ArgumentError, ":from reads an export already made, so it takes no #{inspect(Keyword.keys(given))}"

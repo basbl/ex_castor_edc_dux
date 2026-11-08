@@ -133,6 +133,17 @@ values
 
 With `format: :wide`, it gives the same shape as `participant_data/3`, with a column per variable; `labels: true` puts the options' names in its radio and dropdown columns.
 
+## Domains
+
+A study whose fields are mapped to domains, as in CDISC SDTM, can be exported grouped by domain.
+`domains/3` runs that export and gives a frame per domain, keyed by its abbreviation, with a row per participant per visit, repeating data instance or survey; `labels: true` adds the options' names.
+
+```elixir
+{:ok, domains} = CastorEDC.Dux.domains(client, study_id, labels: true, missing_columns: true, dir: dir)
+
+Map.new(domains, fn {domain, frame} -> {domain, Dux.n_rows(frame)} end)
+```
+
 ## Surveys, repeating data and queries
 
 `survey_package_instances/3` has a row per survey package sent to (or started for) a participant, with its progress and when it was sent and finished:
