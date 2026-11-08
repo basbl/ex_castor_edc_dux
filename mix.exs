@@ -91,7 +91,7 @@ defmodule CastorEDC.Dux.MixProject do
   # together; without it, the package builds on the released core.
   defp castor_edc do
     case System.get_env("CASTOR_EDC_PATH") do
-      blank when blank in [nil, ""] -> {:ex_castor_edc, "~> 1.0.0-rc.1"}
+      blank when blank in [nil, ""] -> {:ex_castor_edc, "~> 1.0"}
       path -> {:ex_castor_edc, path: path}
     end
   end
