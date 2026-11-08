@@ -38,6 +38,11 @@ client = CastorEDC.new(client_id: "...", client_secret: "...")
 {:ok, fields} = CastorEDC.Dux.fields(client, study_id, dir: "data")
 {:ok, sites} = CastorEDC.Dux.sites(client, study_id, dir: "data")
 {:ok, options} = CastorEDC.Dux.option_groups(client, study_id, dir: "data")
+
+# The survey packages sent, the repeating data instances made, and the queries raised.
+{:ok, packages} = CastorEDC.Dux.survey_package_instances(client, study_id, dir: "data")
+{:ok, instances} = CastorEDC.Dux.repeating_data_instances(client, study_id, dir: "data")
+{:ok, queries} = CastorEDC.Dux.queries(client, study_id, dir: "data")
 ```
 
 ## Contributing

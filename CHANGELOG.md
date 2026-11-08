@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+### Added
+
+- `CastorEDC.Dux.survey_package_instances/3`, `repeating_data_instances/3` and `queries/3` write those resources to Parquet and give frames over them, a row each, with fixed types.
+  A survey package instance's `parent_type` is named (`visit` or `repeating_data_instance`) instead of the API's code, and a query's `remarks` counts its remarks.
+
 ### Changed
 
 - Builds on ex_castor_edc 1.0 (`~> 1.0`) instead of its release candidate.

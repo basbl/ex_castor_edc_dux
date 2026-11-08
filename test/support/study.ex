@@ -73,6 +73,56 @@ defmodule CastorEDC.Dux.Study do
           },
           %{"id" => "og-empty", "name" => "Empty", "options" => []}
         ]),
+      "/survey-package-instance" =>
+        page("surveypackageinstance", [
+          %{
+            "id" => "spi-1",
+            "survey_package_instance_id" => "spi-1",
+            "survey_package_id" => "sp-1",
+            "survey_package_name" => "Anxiety",
+            "participant_id" => "P2",
+            "site_id" => "site-2",
+            "site_name" => "Utrecht",
+            "status" => "Finished",
+            "progress" => 100,
+            "locked" => false,
+            "archived" => false,
+            "parent_id" => "visit-1",
+            "parent_type" => "1",
+            "created_on" => %{"date" => "2026-10-07 21:50:13.000000", "timezone" => "Europe/Amsterdam"},
+            "sent_on" => %{"date" => "2026-10-08 09:00:00.000000", "timezone" => "Europe/Amsterdam"},
+            "finished_on" => nil
+          },
+          %{"id" => "spi-2", "participant_id" => "P1", "progress" => 0, "parent_id" => nil, "parent_type" => "0"}
+        ]),
+      "/repeating-data-instance" =>
+        page("repeatingDataInstance", [
+          %{
+            "id" => "rdi-1",
+            "name" => "Blood pressure - 07-10-2026 21:46:26",
+            "repeating_data_name" => "Blood pressure",
+            "participant_id" => "P1",
+            "status" => "open",
+            "archived" => false,
+            "parent_id" => "",
+            "parent_type" => "",
+            "created_on" => "2026-10-07 21:46:26",
+            "_embedded" => %{"repeating_data" => %{"id" => "rd-1", "name" => "Blood pressure"}}
+          },
+          %{"id" => "rdi-2", "participant_id" => "P1", "archived" => true}
+        ]),
+      "/query" =>
+        page("queries", [
+          %{
+            "id" => "q-1",
+            "record_id" => "P1",
+            "field_id" => "f-weight",
+            "status" => "New",
+            "first_query_remark" => "Is this right?",
+            "created_on" => %{"date" => "2026-10-08 10:00:00.000000", "timezone" => "Europe/Amsterdam"},
+            "_embedded" => %{"query_remarks" => [%{"id" => "qr-1"}, %{"id" => "qr-2"}]}
+          }
+        ]),
       "/data-points/study" =>
         page("items", [
           point("P1", "f-weight", "72.5"),

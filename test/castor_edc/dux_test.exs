@@ -258,4 +258,91 @@ defmodule CastorEDC.DuxTest do
              ]
     end
   end
+
+  describe "survey_package_instances/3" do
+    test "writes a row per survey package instance", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.survey_package_instances(Study.client(), Study.id(), dir: dir)
+
+      assert {"progress", "BIGINT"} in types(frame)
+      assert {"finished_on", "TIMESTAMP WITH TIME ZONE"} in types(frame)
+
+      assert [spi1, spi2] = rows(frame, ["survey_package_instance_id"])
+
+      assert %{
+               "survey_package_instance_id" => "spi-1",
+               "survey_package_name" => "Anxiety",
+               "participant_id" => "P2",
+               "site_name" => "Utrecht",
+               "status" => "Finished",
+               "progress" => 100,
+               "locked" => false,
+               "parent_id" => "visit-1",
+               "parent_type" => "visit",
+               "created_on" => ~N[2026-10-07 19:50:13.000000],
+               "sent_on" => ~N[2026-10-08 07:00:00.000000],
+               "finished_on" => nil
+             } = spi1
+
+      assert %{"survey_package_instance_id" => "spi-2", "parent_id" => nil, "parent_type" => nil} = spi2
+    end
+
+    test "returns the error of a failed request", %{tmp_dir: dir} do
+      client = Study.client(%{"/survey-package-instance" => CastorEDC.Test.json(%{"detail" => "Forbidden"}, status: 403)})
+
+      assert {:error, %CastorEDC.Error{status: 403}} =
+               CastorEDC.Dux.survey_package_instances(client, Study.id(), dir: dir)
+    end
+  end
+
+  describe "repeating_data_instances/3" do
+    test "writes a row per repeating data instance", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.repeating_data_instances(Study.client(), Study.id(), dir: dir)
+
+      assert {"created_on", "TIMESTAMP"} in types(frame)
+
+      assert [
+               %{
+                 "repeating_data_instance_id" => "rdi-1",
+                 "name" => "Blood pressure - 07-10-2026 21:46:26",
+                 "repeating_data_id" => "rd-1",
+                 "repeating_data_name" => "Blood pressure",
+                 "participant_id" => "P1",
+                 "archived" => false,
+                 "parent_id" => nil,
+                 "parent_type" => nil,
+                 "created_on" => ~N[2026-10-07 21:46:26.000000]
+               },
+               %{"repeating_data_instance_id" => "rdi-2", "repeating_data_id" => nil, "archived" => true}
+             ] = rows(frame, ["repeating_data_instance_id"])
+    end
+  end
+
+  describe "queries/3" do
+    test "writes a row per query", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.queries(Study.client(), Study.id(), dir: dir)
+
+      assert rows(frame) == [
+               %{
+                 "query_id" => "q-1",
+                 "participant_id" => "P1",
+                 "field_id" => "f-weight",
+                 "status" => "New",
+                 "first_query_remark" => "Is this right?",
+                 "remarks" => 2,
+                 "created_by" => nil,
+                 "created_on" => ~N[2026-10-08 08:00:00.000000],
+                 "updated_by" => nil,
+                 "updated_on" => nil
+               }
+             ]
+    end
+
+    test "keeps the columns when there are no queries", %{tmp_dir: dir} do
+      client = Study.client(%{"/query" => Study.page("queries", [])})
+
+      assert {:ok, frame} = CastorEDC.Dux.queries(client, Study.id(), dir: dir)
+      assert Dux.to_rows(frame) == []
+      assert {"created_on", "TIMESTAMP WITH TIME ZONE"} in types(frame)
+    end
+  end
 end

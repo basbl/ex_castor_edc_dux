@@ -169,6 +169,58 @@ defmodule CastorEDC.Dux do
     {"order", :order, "BIGINT"}
   ]
 
+  @survey_package_instances [
+    {"survey_package_instance_id", :id, "VARCHAR"},
+    {"survey_package_id", :survey_package_id, "VARCHAR"},
+    {"survey_package_name", :survey_package_name, "VARCHAR"},
+    {"participant_id", :participant_id, "VARCHAR"},
+    {"site_id", :site_id, "VARCHAR"},
+    {"site_name", :site_name, "VARCHAR"},
+    {"status", :status, "VARCHAR"},
+    {"progress", :progress, "BIGINT"},
+    {"locked", :locked, "BOOLEAN"},
+    {"archived", :archived, "BOOLEAN"},
+    {"parent_id", :parent_id, "VARCHAR"},
+    {"parent_type", :parent_type, "VARCHAR"},
+    {"created_by", :created_by, "VARCHAR"},
+    {"created_on", :created_on, "TIMESTAMPTZ"},
+    {"available_from", :available_from, "TIMESTAMPTZ"},
+    {"sent_on", :sent_on, "TIMESTAMPTZ"},
+    {"received_on", :received_on, "TIMESTAMPTZ"},
+    {"first_opened_on", :first_opened_on, "TIMESTAMPTZ"},
+    {"started_on", :started_on, "TIMESTAMPTZ"},
+    {"all_fields_filled_on", :all_fields_filled_on, "TIMESTAMPTZ"},
+    {"finished_on", :finished_on, "TIMESTAMPTZ"},
+    {"expire_on", :expire_on, "TIMESTAMPTZ"}
+  ]
+
+  @repeating_data_instances [
+    {"repeating_data_instance_id", :id, "VARCHAR"},
+    {"name", :name, "VARCHAR"},
+    {"repeating_data_id", :repeating_data_id, "VARCHAR"},
+    {"repeating_data_name", :repeating_data_name, "VARCHAR"},
+    {"participant_id", :participant_id, "VARCHAR"},
+    {"status", :status, "VARCHAR"},
+    {"archived", :archived, "BOOLEAN"},
+    {"parent_id", :parent_id, "VARCHAR"},
+    {"parent_type", :parent_type, "VARCHAR"},
+    {"created_by", :created_by, "VARCHAR"},
+    {"created_on", :created_on, "TIMESTAMP"}
+  ]
+
+  @queries [
+    {"query_id", :id, "VARCHAR"},
+    {"participant_id", :participant_id, "VARCHAR"},
+    {"field_id", :field_id, "VARCHAR"},
+    {"status", :status, "VARCHAR"},
+    {"first_query_remark", :first_query_remark, "VARCHAR"},
+    {"remarks", :remarks, "BIGINT"},
+    {"created_by", :created_by, "VARCHAR"},
+    {"created_on", :created_on, "TIMESTAMPTZ"},
+    {"updated_by", :updated_by, "VARCHAR"},
+    {"updated_on", :updated_on, "TIMESTAMPTZ"}
+  ]
+
   @doc """
   The study's participants, a row each.
 
@@ -265,6 +317,82 @@ defmodule CastorEDC.Dux do
   end
 
   @doc """
+  The study's survey package instances, the survey packages sent to (or
+  started for) participants, a row each.
+
+  Columns: `survey_package_instance_id`, `survey_package_id` and
+  `survey_package_name`, `participant_id`, `site_id` and `site_name`,
+  `status`, `progress` (`BIGINT`, a percentage), `locked` and `archived`
+  (`BOOLEAN`), `parent_id` and `parent_type` (`visit` or
+  `repeating_data_instance`, for one that belongs to either),
+  `created_by`, and the times `created_on`, `available_from`, `sent_on`,
+  `received_on`, `first_opened_on`, `started_on`, `all_fields_filled_on`,
+  `finished_on` and `expire_on`, which are `TIMESTAMPTZ` (which Dux reads
+  back as UTC). The rest are `VARCHAR`.
+
+  Takes `:dir`, as `data_points/3` does.
+  """
+  @spec survey_package_instances(CastorEDC.client(), String.t(), keyword()) ::
+          {:ok, Dux.t()} | {:error, CastorEDC.Error.t()}
+  def survey_package_instances(client, study_id, opts \\ []) do
+    resource(@survey_package_instances, opts, "survey_package_instances", fn ->
+      for instance <- CastorEDC.Surveys.stream_survey_package_instances(client, study_id) do
+        %{instance | parent_id: blank_to_nil(instance.parent_id), parent_type: parent_type(instance.parent_type)}
+      end
+    end)
+  end
+
+  @doc """
+  The study's repeating data instances, such as each adverse event a
+  participant had, a row each.
+
+  Columns: `repeating_data_instance_id`, `name` (the instance's own),
+  `repeating_data_id` and `repeating_data_name`, `participant_id`,
+  `status`, `archived` (`BOOLEAN`), `parent_id` and `parent_type` (what
+  it was created from, if anything), `created_by`, and `created_on`,
+  which is a `TIMESTAMP` in the server's time zone, as the API gives it.
+  The rest are `VARCHAR`.
+
+  The instances' values are in `data_points/3`, under their
+  `repeating_data_instance_id` as `instance_id`. Takes `:dir`, as
+  `data_points/3` does.
+  """
+  @spec repeating_data_instances(CastorEDC.client(), String.t(), keyword()) ::
+          {:ok, Dux.t()} | {:error, CastorEDC.Error.t()}
+  def repeating_data_instances(client, study_id, opts \\ []) do
+    resource(@repeating_data_instances, opts, "repeating_data_instances", fn ->
+      for instance <- CastorEDC.RepeatingData.stream_repeating_data_instances(client, study_id) do
+        Map.merge(instance, %{
+          repeating_data_id: instance.repeating_data && instance.repeating_data.id,
+          parent_id: blank_to_nil(instance.parent_id),
+          parent_type: blank_to_nil(instance.parent_type)
+        })
+      end
+    end)
+  end
+
+  @doc """
+  The queries raised on the study's values, a row each.
+
+  Columns: `query_id`, `participant_id`, `field_id`, `status`,
+  `first_query_remark`, `remarks` (`BIGINT`, how many remarks the query
+  has), `created_by`, `created_on`, `updated_by` and `updated_on`. The
+  times are `TIMESTAMPTZ` (which Dux reads back as UTC), the rest
+  `VARCHAR`.
+
+  Join `field_id` with `fields/3` for the field's name and form. Takes
+  `:dir`, as `data_points/3` does.
+  """
+  @spec queries(CastorEDC.client(), String.t(), keyword()) :: {:ok, Dux.t()} | {:error, CastorEDC.Error.t()}
+  def queries(client, study_id, opts \\ []) do
+    resource(@queries, opts, "queries", fn ->
+      for query <- CastorEDC.Queries.stream_queries(client, study_id) do
+        Map.put(query, :remarks, query.query_remarks && length(query.query_remarks))
+      end
+    end)
+  end
+
+  @doc """
   The study's data from a participant data export, as a `t:wide/0` map of
   lazy frames over the export's CSV files: one for the study's values, and
   one per repeating data and per survey.
@@ -329,6 +457,16 @@ defmodule CastorEDC.Dux do
 
   defp value_type({list, of}), do: "#{list}(#{of})"
   defp value_type(type), do: Atom.to_string(type)
+
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(value), do: value
+
+  # A survey package instance's parent type is a code: 0 for none, 1 for a
+  # visit, 2 for a repeating data instance.
+  defp parent_type("0"), do: nil
+  defp parent_type("1"), do: "visit"
+  defp parent_type("2"), do: "repeating_data_instance"
+  defp parent_type(type), do: blank_to_nil(type)
 
   defp flag(nil), do: nil
   defp flag(value), do: value not in [0, false]
