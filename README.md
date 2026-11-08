@@ -36,6 +36,9 @@ client = CastorEDC.new(client_id: "...", client_secret: "...")
 {:ok, %{study: study, repeating_data: repeating_data, surveys: surveys}} =
   CastorEDC.Dux.participant_data(client, study_id, dir: "data")
 
+# Or from an export already downloaded: the struct, or the path to its zip or directory.
+{:ok, frames} = CastorEDC.Dux.participant_data(client, study_id, from: "exports/study.zip", dir: "data")
+
 # The study's participants, fields, sites and options.
 {:ok, participants} = CastorEDC.Dux.participants(client, study_id, dir: "data")
 {:ok, fields} = CastorEDC.Dux.fields(client, study_id, dir: "data")
