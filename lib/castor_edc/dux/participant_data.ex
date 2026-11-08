@@ -183,7 +183,7 @@ defmodule CastorEDC.Dux.ParticipantData do
         kind = kind(variables[variable])
         value = "#{missing_free(column, kind)} AS #{identifier(variable)}"
 
-        if missing_columns and kind != :string,
+        if missing_columns,
           do: [value, "#{missing(column, kind)} AS #{identifier(variable <> "_missing")}"],
           else: [value]
     end
@@ -207,24 +207,23 @@ defmodule CastorEDC.Dux.ParticipantData do
   defp kind(%{type: "time"}), do: :time
   defp kind(_other), do: :string
 
-  # Values marked missing are written as -95 to -99 in numbers and as the
-  # dates 1 January 2995 to 2999.
+  # Values marked missing are written as the dates 1 January 2995 to 2999
+  # in date fields, and as -95 to -99 in every other field, datetimes and
+  # option and text fields included.
   defp missing(column, kind) do
     whens = Enum.map_join(@missing, " ", &"WHEN #{literal(code_text(&1, kind))} THEN #{&1}")
     "CAST(CASE #{missing_part(column, kind)} #{whens} END AS SMALLINT)"
   end
-
-  defp missing_free(column, :string), do: column
 
   defp missing_free(column, kind) do
     codes = Enum.map_join(@missing, ", ", &literal(code_text(&1, kind)))
     "CASE WHEN #{missing_part(column, kind)} IN (#{codes}) THEN NULL ELSE #{value(column, kind)} END"
   end
 
-  defp missing_part(column, kind) when kind in [:date, :datetime], do: "left(#{column}, 10)"
+  defp missing_part(column, :date), do: "left(#{column}, 10)"
   defp missing_part(column, _kind), do: column
 
-  defp code_text(code, kind) when kind in [:date, :datetime], do: "01-01-29#{code}"
+  defp code_text(code, :date), do: "01-01-29#{code}"
   defp code_text(code, _kind), do: "-#{code}"
 
   defp value(column, :string), do: column

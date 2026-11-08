@@ -17,6 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Builds on ex_castor_edc 1.0 (`~> 1.0`) instead of its release candidate.
 
+### Fixed
+
+- `CastorEDC.Dux.participant_data/3` reads the export's -95 to -99 as missing values in every field but dates and checkboxes, not only in numeric and year fields.
+  A missing datetime became null without its code, and a missing radio, dropdown or text value came through as the text `-98`; they're now nulls, and with `missing_columns: true` those fields get a `<variable>_missing` column too.
+
 ## [0.1.0] - 2026-10-15
 
 ### Added

@@ -14,7 +14,7 @@ defmodule CastorEDC.Dux.ParticipantDataTest do
   @study_csv @bom <>
                ~s("Participant Id";"Participant Status";"Site Abbreviation";"Participant Creation Date";weight;year;visit;seen;time;sex;"family#Renal disease";family#Deafness;note\n) <>
                ~s(P1;"Not Set";AMS;"07-10-2026 21:06:33";72.5;1980;07-10-2026;"07-10-2026 12:30";12:30;1;1;0;"fine; thanks"\n) <>
-               ~s(P2;"Not Set";UTR;"08-10-2026 10:00:33";-98;-95;01-01-2997;;;;0;0;\n)
+               ~s(P2;"Not Set";UTR;"08-10-2026 10:00:33";-98;-95;01-01-2997;-96;;-99;0;0;-98\n)
 
   @repeating_csv @bom <>
                    ~s("Participant Id";"Participant Status";"Repeating Data Creation Date";"Repeating data Name Custom";"Repeating data Parent";sys\n) <>
@@ -131,11 +131,13 @@ defmodule CastorEDC.Dux.ParticipantDataTest do
       assert {:ok, %{study: study}} =
                CastorEDC.Dux.participant_data(client(), Study.id(), poll_interval: 0, missing_columns: true, dir: dir)
 
-      assert study |> rows() |> Enum.map(&{&1["weight_missing"], &1["year_missing"], &1["visit_missing"]}) ==
-               [{nil, nil, nil}, {98, 95, 97}]
+      missing = ~w(weight_missing year_missing visit_missing seen_missing time_missing sex_missing note_missing)
+
+      assert study |> rows() |> Enum.map(&Enum.map(missing, fn column -> &1[column] end)) ==
+               [[nil, nil, nil, nil, nil, nil, nil], [98, 95, 97, 96, nil, 99, 98]]
 
       assert {"visit_missing", "SMALLINT"} in types(study)
-      refute "sex_missing" in names(study)
+      refute "family_0_missing" in names(study)
     end
 
     test "queues a CSV export with the filters given", %{tmp_dir: dir} do
