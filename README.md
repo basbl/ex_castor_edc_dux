@@ -49,6 +49,9 @@ client = CastorEDC.new(client_id: "...", client_secret: "...")
 {:ok, packages} = CastorEDC.Dux.survey_package_instances(client, study_id, dir: "data")
 {:ok, instances} = CastorEDC.Dux.repeating_data_instances(client, study_id, dir: "data")
 {:ok, queries} = CastorEDC.Dux.queries(client, study_id, dir: "data")
+
+# Anything else the client returns, from a list, page or stream of its structs.
+countries = client |> CastorEDC.Countries.list_countries!() |> CastorEDC.Dux.from_structs(dir: "data")
 ```
 
 ## Contributing

@@ -483,6 +483,87 @@ defmodule CastorEDC.Dux do
     error in CastorEDC.Error -> {:error, error}
   end
 
+  @doc """
+  A frame from any of the client's results: a list, `CastorEDC.Page` or
+  stream of structs (or maps), a row each, for resources this module has
+  no function of its own for, written to Parquet as the other functions'
+  frames are.
+
+      client |> CastorEDC.Countries.list_countries!() |> CastorEDC.Dux.from_structs(dir: "data")
+      client |> CastorEDC.Forms.stream_visits(study_id) |> CastorEDC.Dux.from_structs(dir: "data")
+
+  Each field holding a plain value becomes a column named after it, in
+  alphabetical order, as the client's structs define their fields. Fields
+  holding a nested object or a list, such as a participant's `site`, are
+  left out, as is the `extra` map; take those from the structs yourself.
+
+  Unlike the other functions, the types are inferred from the values, as
+  nothing else describes them: `VARCHAR` for text, `BIGINT` for integers,
+  `DOUBLE` for floats (and integers mixed with them), `BOOLEAN`, `DATE`,
+  `TIME`, `TIMESTAMP`, and `TIMESTAMPTZ` for `DateTime`s, which Dux reads
+  back as UTC. A column whose values are of different kinds, or that has
+  no values at all, is `VARCHAR`. A frame needs a column, so no structs
+  give a frame without rows whose only column is `_empty`.
+
+  Returns the frame, and raises the `CastorEDC.Error` of a stream whose
+  request fails.
+
+  ## Options
+
+    * `:dir` - where to write the file, as for `data_points/3`
+    * `:name` - the file's name, `<name>.parquet`; a new one by default,
+      so a later call never overwrites an earlier frame's file
+  """
+  @spec from_structs(Enumerable.t() | CastorEDC.Page.t(), keyword()) :: Dux.t()
+  def from_structs(structs, opts \\ [])
+  def from_structs(%CastorEDC.Page{entries: entries}, opts), do: from_structs(entries, opts)
+
+  def from_structs(structs, opts) do
+    rows = Enum.to_list(structs)
+    name = Keyword.get_lazy(opts, :name, fn -> "structs_#{System.unique_integer([:positive])}" end)
+
+    case rows |> keys() |> Enum.flat_map(&struct_column(&1, Enum.map(rows, fn row -> Map.get(row, &1) end))) do
+      [] -> Dux.from_query("SELECT NULL::BOOLEAN AS _empty LIMIT 0")
+      columns -> Table.write(rows, columns, Table.dir(opts[:dir]), name)
+    end
+  end
+
+  # The rows' keys, sorted, without a struct's own and its extra map.
+  defp keys(rows) do
+    rows |> Enum.flat_map(&Map.keys/1) |> Enum.uniq() |> Kernel.--([:__struct__, :extra]) |> Enum.sort()
+  end
+
+  # A column of struct fields, as Table.write takes it, or none for a field
+  # holding nested objects or lists.
+  defp struct_column(key, values) do
+    kinds = values |> Enum.reject(&is_nil/1) |> Enum.map(&kind/1) |> Enum.uniq()
+
+    cond do
+      :nested in kinds -> []
+      inferred_type(kinds) == "VARCHAR" -> [{to_string(key), &Table.text(Map.get(&1, key)), "VARCHAR"}]
+      true -> [{to_string(key), key, inferred_type(kinds)}]
+    end
+  end
+
+  defp kind(value) when is_binary(value) or (is_atom(value) and not is_boolean(value)), do: :string
+  defp kind(value) when is_boolean(value), do: :boolean
+  defp kind(value) when is_integer(value), do: :integer
+  defp kind(value) when is_float(value), do: :float
+  defp kind(%Date{}), do: :date
+  defp kind(%Time{}), do: :time
+  defp kind(%NaiveDateTime{}), do: :naive_datetime
+  defp kind(%DateTime{}), do: :datetime
+  defp kind(_value), do: :nested
+
+  defp inferred_type([:boolean]), do: "BOOLEAN"
+  defp inferred_type([:integer]), do: "BIGINT"
+  defp inferred_type(kinds) when kinds in [[:float], [:integer, :float], [:float, :integer]], do: "DOUBLE"
+  defp inferred_type([:date]), do: "DATE"
+  defp inferred_type([:time]), do: "TIME"
+  defp inferred_type([:naive_datetime]), do: "TIMESTAMP"
+  defp inferred_type([:datetime]), do: "TIMESTAMPTZ"
+  defp inferred_type(_text_mixed_or_empty), do: "VARCHAR"
+
   @export_options [:filters, :timeout, :poll_interval]
 
   # The paths of the export's files, from a new export or the one given as

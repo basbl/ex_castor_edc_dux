@@ -4,6 +4,7 @@ defmodule CastorEDC.DuxTest do
   import CastorEDC.Dux.Frames
 
   alias CastorEDC.Dux.Study
+  alias CastorEDC.Model.Country
 
   @moduletag :tmp_dir
 
@@ -380,6 +381,96 @@ defmodule CastorEDC.DuxTest do
       assert {:ok, frame} = CastorEDC.Dux.queries(client, Study.id(), dir: dir)
       assert Dux.to_rows(frame) == []
       assert {"created_on", "TIMESTAMP WITH TIME ZONE"} in types(frame)
+    end
+  end
+
+  describe "from_structs/2" do
+    test "writes a row per struct, a column per plain field", %{tmp_dir: dir} do
+      countries = [
+        Country.new(%{"id" => 169, "country_name" => "Netherlands", "country_cca2" => "NL"}),
+        Country.new(%{"id" => 233, "country_name" => "United States", "unknown" => "kept in extra"})
+      ]
+
+      frame = CastorEDC.Dux.from_structs(countries, dir: dir, name: "countries")
+
+      assert types(frame) == [
+               {"country_cca2", "VARCHAR"},
+               {"country_cca3", "VARCHAR"},
+               {"country_id", "VARCHAR"},
+               {"country_name", "VARCHAR"},
+               {"country_tld", "VARCHAR"},
+               {"id", "BIGINT"}
+             ]
+
+      assert frame |> rows(["id"]) |> Enum.map(& &1["country_name"]) == ["Netherlands", "United States"]
+      assert File.exists?(Path.join(dir, "countries.parquet"))
+    end
+
+    test "reads a page, or a stream of the client's, into files of their own", %{tmp_dir: dir} do
+      page = %CastorEDC.Page{entries: [%{name: "a"}, %{name: "b"}]}
+      assert page |> CastorEDC.Dux.from_structs(dir: dir) |> rows(["name"]) == [%{"name" => "a"}, %{"name" => "b"}]
+
+      frame = Study.client() |> CastorEDC.Sites.stream_sites(Study.id()) |> CastorEDC.Dux.from_structs(dir: dir)
+      assert frame |> rows(["id"]) |> Enum.map(& &1["abbreviation"]) == ["AMS", nil]
+      assert {"deleted", "BOOLEAN"} in types(frame)
+
+      assert dir |> File.ls!() |> length() == 2
+    end
+
+    test "infers the types from the values, leaving nested objects and lists out", %{tmp_dir: dir} do
+      rows = [
+        %{
+          text: "a",
+          count: 1,
+          share: 0.5,
+          mixed_number: 1,
+          flag: true,
+          day: ~D[2026-11-08],
+          at: ~T[12:30:00],
+          local: ~N[2026-11-08 12:30:00],
+          utc: DateTime.new!(~D[2026-11-08], ~T[12:30:00], "Europe/Amsterdam", Tz.TimeZoneDatabase),
+          status: :open,
+          mixed: "1",
+          site: %{id: "site-1"},
+          tags: ["x"]
+        },
+        %{mixed_number: 2.5, mixed: 2, status: nil, text: "b"}
+      ]
+
+      frame = CastorEDC.Dux.from_structs(rows, dir: dir)
+
+      assert Map.new(types(frame)) == %{
+               "text" => "VARCHAR",
+               "count" => "BIGINT",
+               "share" => "DOUBLE",
+               "mixed_number" => "DOUBLE",
+               "flag" => "BOOLEAN",
+               "day" => "DATE",
+               "at" => "TIME",
+               "local" => "TIMESTAMP",
+               "utc" => "TIMESTAMP WITH TIME ZONE",
+               "status" => "VARCHAR",
+               "mixed" => "VARCHAR"
+             }
+
+      assert [first, second] = rows(frame, ["text"])
+      assert %{"mixed" => "1", "mixed_number" => 1.0, "status" => "open", "utc" => ~N[2026-11-08 11:30:00.000000]} = first
+      assert %{"mixed" => "2", "mixed_number" => 2.5, "status" => nil} = second
+    end
+
+    test "gives a frame without rows for no structs" do
+      frame = CastorEDC.Dux.from_structs([])
+
+      assert names(frame) == ["_empty"]
+      assert Dux.to_rows(frame) == []
+    end
+
+    test "raises the error of a stream whose request fails", %{tmp_dir: dir} do
+      client = Study.client(%{"/site" => CastorEDC.Test.json(%{"detail" => "Forbidden"}, status: 403)})
+
+      assert_raise CastorEDC.Error, fn ->
+        client |> CastorEDC.Sites.stream_sites(Study.id()) |> CastorEDC.Dux.from_structs(dir: dir)
+      end
     end
   end
 end
