@@ -504,6 +504,7 @@ defmodule CastorEDC.Dux do
   | `numeric`, `slider` | `DOUBLE` |
   | `year` | `BIGINT` |
   | `date` | `DATE` |
+  | `date_partial` | `VARCHAR`, as `2026-05-01`, which may lack a day or month |
   | `time` | `TIME` |
   | `datetime` | `TIMESTAMP` |
   | `numberdate` | `<variable>_number` of `DOUBLE` and `<variable>_date` of `DATE` |
@@ -519,9 +520,10 @@ defmodule CastorEDC.Dux do
   are `TIMESTAMP`, in the server's time zone, and the rest `VARCHAR`.
   Values that don't read as their type are null.
 
-  Values marked missing are nulls; with `missing_columns: true`, their
-  codes go in a `<variable>_missing` column of `SMALLINT` (one per
-  checkbox). With `labels: true`, the export also writes the options'
+  Values marked missing are nulls, whether the export wrote their codes in
+  `_U` columns of their own or in the variables' columns; with
+  `missing_columns: true`, their codes go in a `<variable>_missing` column
+  of `SMALLINT` (one per checkbox). With `labels: true`, the export also writes the options'
   names, and each radio and dropdown gets a `<variable>_label` column of
   `VARCHAR` holding them.
 

@@ -85,6 +85,33 @@ defmodule CastorEDC.Dux.DomainsTest do
     {"field_options.csv", @bom <> "Option group name;Option name;Option value\nSex;Female;1\n"}
   ]
 
+  # An export with a variable list for every domain, its missing values in
+  # their own columns and its dates as text, as Castor EDC can write it too.
+  @same_column_csv @bom <>
+                     @metadata_header <>
+                     ~s(;seen;at;time;partly;nd_number;nd_date;family_renal\n) <>
+                     ~s(P1;"Not Set";AMS;;;;"2026-10-30 15:48:00";;;Baseline;;Visit;Baseline;2026-05-08;"2026-05-08 12:30";12:30;2026-05-01;7;2026-05-01;1\n) <>
+                     ~s(P2;"Not Set";UTR;;;;"2026-10-31 09:00:00";;;Baseline;;Visit;Baseline;01-01-2997;"01-01-2999 00:00:36";00:00:35;01-01-2998;-99;01-01-2999;-95\n)
+
+  @combined_variables @bom <>
+                        @variables_header <>
+                        @metadata_variables <>
+                        ~s(SC;Same;date;string;seen;\n) <>
+                        ~s(SC;Same;datetime;string;at;\n) <>
+                        ~s(SC;Same;time;string;time;\n) <>
+                        ~s(SC;Same;date_partial;string;partly;\n) <>
+                        ~s(SC;Same;numberdate;numeric;nd_number;\n) <>
+                        ~s(SC;Same;numberdate;string;nd_date;\n) <>
+                        ~s(SC;Same;checkbox;numeric;family_renal;Family;"This column, related to the family domain variable, has been added as checkbox fields are split into separate columns.";"Renal disease";0\n) <>
+                        ~s(OT;Other;numeric;numeric;weight;\n)
+
+  @same_column_files [
+    {"SC.csv", @same_column_csv},
+    {"OT.csv", @bom <> @metadata_header <> ";weight\n"},
+    {"variablelist.csv", @combined_variables},
+    {"domain_mapping.csv", @bom <> "Domain abbreviation;Domain name\nSC;Same\nOT;Other\n"}
+  ]
+
   defp export(files \\ @files), do: %CastorEDC.Export{id: "export-1", type: :participant_data, format: :csv, files: files}
 
   describe "domains/3" do
@@ -178,6 +205,57 @@ defmodule CastorEDC.Dux.DomainsTest do
              } = em |> rows() |> List.last()
 
       refute "family_1_missing" in names(em)
+    end
+
+    test "reads missing values written in their own columns, and a variable list for every domain", %{tmp_dir: dir} do
+      assert {:ok, %{"SC" => sc, "OT" => ot}} =
+               CastorEDC.Dux.domains(no_export_client(), Study.id(),
+                 from: export(@same_column_files),
+                 missing_columns: true,
+                 dir: dir
+               )
+
+      assert %{
+               "seen" => "DATE",
+               "at" => "TIMESTAMP",
+               "time" => "TIME",
+               "partly" => "VARCHAR",
+               "nd_number" => "DOUBLE",
+               "nd_date" => "DATE",
+               "family_0" => "BOOLEAN"
+             } = Map.new(types(sc))
+
+      assert [
+               %{
+                 "seen" => ~D[2026-05-08],
+                 "at" => ~N[2026-05-08 12:30:00.000000],
+                 "time" => ~T[12:30:00.000000],
+                 "partly" => "2026-05-01",
+                 "nd_number" => 7.0,
+                 "nd_date" => ~D[2026-05-01],
+                 "family_0" => true,
+                 "seen_missing" => nil
+               },
+               %{
+                 "seen" => nil,
+                 "seen_missing" => 97,
+                 "at" => nil,
+                 "at_missing" => 96,
+                 "time" => nil,
+                 "time_missing" => 95,
+                 "partly" => nil,
+                 "partly_missing" => 98,
+                 "nd_number" => nil,
+                 "nd_number_missing" => 99,
+                 "nd_date" => nil,
+                 "nd_date_missing" => 99,
+                 "family_0" => nil,
+                 "family_missing" => 95
+               }
+             ] = rows(sc)
+
+      assert {"weight", "DOUBLE"} in types(ot)
+      assert Dux.to_rows(ot) == []
     end
 
     test "leaves the options' names out unless asked", %{tmp_dir: dir} do
