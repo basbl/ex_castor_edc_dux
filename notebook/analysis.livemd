@@ -71,7 +71,7 @@ fields
 {:ok, sites} = CastorEDC.Dux.sites(client, study_id, dir: dir)
 
 participants
-|> Dux.join(Dux.select(sites, [:site_id, :name]), on: :site_id, how: :left)
+|> Dux.join(sites |> Dux.select([:site_id, :name]) |> Dux.compute(), on: :site_id, how: :left)
 |> Dux.group_by(:name)
 |> Dux.summarise_with(participants: "COUNT(participant_id)", mean_progress: "AVG(progress)")
 |> Dux.compute()
@@ -175,7 +175,7 @@ instances
 {:ok, queries} = CastorEDC.Dux.queries(client, study_id, dir: dir)
 
 queries
-|> Dux.join(Dux.select(fields, [:field_id, :variable_name]), on: :field_id, how: :left)
+|> Dux.join(fields |> Dux.select([:field_id, :variable_name]) |> Dux.compute(), on: :field_id, how: :left)
 |> Dux.select([:participant_id, :variable_name, :status, :first_query_remark, :remarks, :created_on])
 |> Dux.compute()
 ```
