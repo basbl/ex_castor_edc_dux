@@ -4,6 +4,7 @@ defmodule CastorEDC.DuxTest do
   import CastorEDC.Dux.Frames
 
   alias CastorEDC.Dux.Study
+  alias CastorEDC.Model.Country
 
   @moduletag :tmp_dir
 
@@ -101,6 +102,43 @@ defmodule CastorEDC.DuxTest do
       assert {"weight_missing", "SMALLINT"} in types(study)
       assert study |> rows() |> Enum.map(&{&1["weight_missing"], &1["family_missing"]}) == [{nil, nil}, {98, 95}]
       refute "family_0_missing" in names(study)
+    end
+
+    test "adds the options' names after the values when asked", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.data_points(Study.client(), Study.id(), labels: true, dir: dir)
+
+      names = names(frame)
+      assert Enum.slice(names, Enum.find_index(names, &(&1 == "value")), 3) == ~w(value label missing)
+      assert {"label", "VARCHAR"} in types(frame)
+
+      rows = rows(frame, ["participant_id", "variable_name"])
+      assert %{"value" => "1", "label" => "Female"} = value(rows, "P1", "sex")
+      assert %{"value" => "0;2", "label" => "Renal;Diabetes"} = value(rows, "P1", "family")
+      assert %{"value" => "72.5", "label" => nil} = value(rows, "P1", "weight")
+      assert %{"value" => nil, "missing" => 95, "label" => nil} = value(rows, "P2", "family")
+      assert %{"value" => "3", "label" => "Nearly every day"} = value(rows, "P2", "gad")
+    end
+
+    test "keeps a value that isn't one of its field's options as its label", %{tmp_dir: dir} do
+      client =
+        Study.client(%{
+          "/data-points/survey-instance" =>
+            Study.page("items", [
+              %{"participant_id" => "P2", "field_id" => "f-gad", "field_value" => "7", "survey_instance_id" => "si-1"}
+            ])
+        })
+
+      assert {:ok, frame} = CastorEDC.Dux.data_points(client, Study.id(), labels: true, sources: [:survey], dir: dir)
+      assert [%{"value" => "7", "label" => "7"}] = Dux.to_rows(frame)
+    end
+
+    test "puts the options' names in the wide frames' option columns when asked", %{tmp_dir: dir} do
+      assert {:ok, %{study: study, surveys: %{"GAD-7" => gad}}} =
+               CastorEDC.Dux.data_points(Study.client(), Study.id(), format: :wide, labels: true, dir: dir)
+
+      assert %{"sex" => "Female", "family_0" => true, "family_1" => false, "weight" => 72.5} = study |> rows() |> hd()
+      assert {"family_0", "BOOLEAN"} in types(study)
+      assert [%{"gad" => "Nearly every day"}] = Dux.to_rows(gad)
     end
 
     test "keeps the columns of a study without values", %{tmp_dir: dir} do
@@ -256,6 +294,183 @@ defmodule CastorEDC.DuxTest do
                  "order" => 1
                }
              ]
+    end
+  end
+
+  describe "survey_package_instances/3" do
+    test "writes a row per survey package instance", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.survey_package_instances(Study.client(), Study.id(), dir: dir)
+
+      assert {"progress", "BIGINT"} in types(frame)
+      assert {"finished_on", "TIMESTAMP WITH TIME ZONE"} in types(frame)
+
+      assert [spi1, spi2] = rows(frame, ["survey_package_instance_id"])
+
+      assert %{
+               "survey_package_instance_id" => "spi-1",
+               "survey_package_name" => "Anxiety",
+               "participant_id" => "P2",
+               "site_name" => "Utrecht",
+               "status" => "Finished",
+               "progress" => 100,
+               "locked" => false,
+               "parent_id" => "visit-1",
+               "parent_type" => "visit",
+               "created_on" => ~N[2026-10-07 19:50:13.000000],
+               "sent_on" => ~N[2026-10-08 07:00:00.000000],
+               "finished_on" => nil
+             } = spi1
+
+      assert %{"survey_package_instance_id" => "spi-2", "parent_id" => nil, "parent_type" => nil} = spi2
+    end
+
+    test "returns the error of a failed request", %{tmp_dir: dir} do
+      client = Study.client(%{"/survey-package-instance" => CastorEDC.Test.json(%{"detail" => "Forbidden"}, status: 403)})
+
+      assert {:error, %CastorEDC.Error{status: 403}} =
+               CastorEDC.Dux.survey_package_instances(client, Study.id(), dir: dir)
+    end
+  end
+
+  describe "repeating_data_instances/3" do
+    test "writes a row per repeating data instance", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.repeating_data_instances(Study.client(), Study.id(), dir: dir)
+
+      assert {"created_on", "TIMESTAMP"} in types(frame)
+
+      assert [
+               %{
+                 "repeating_data_instance_id" => "rdi-1",
+                 "name" => "Blood pressure - 07-10-2026 21:46:26",
+                 "repeating_data_id" => "rd-1",
+                 "repeating_data_name" => "Blood pressure",
+                 "participant_id" => "P1",
+                 "archived" => false,
+                 "parent_id" => nil,
+                 "parent_type" => nil,
+                 "created_on" => ~N[2026-10-07 21:46:26.000000]
+               },
+               %{"repeating_data_instance_id" => "rdi-2", "repeating_data_id" => nil, "archived" => true}
+             ] = rows(frame, ["repeating_data_instance_id"])
+    end
+  end
+
+  describe "queries/3" do
+    test "writes a row per query", %{tmp_dir: dir} do
+      assert {:ok, frame} = CastorEDC.Dux.queries(Study.client(), Study.id(), dir: dir)
+
+      assert rows(frame) == [
+               %{
+                 "query_id" => "q-1",
+                 "participant_id" => "P1",
+                 "field_id" => "f-weight",
+                 "status" => "New",
+                 "first_query_remark" => "Is this right?",
+                 "remarks" => 2,
+                 "created_by" => nil,
+                 "created_on" => ~N[2026-10-08 08:00:00.000000],
+                 "updated_by" => nil,
+                 "updated_on" => nil
+               }
+             ]
+    end
+
+    test "keeps the columns when there are no queries", %{tmp_dir: dir} do
+      client = Study.client(%{"/query" => Study.page("queries", [])})
+
+      assert {:ok, frame} = CastorEDC.Dux.queries(client, Study.id(), dir: dir)
+      assert Dux.to_rows(frame) == []
+      assert {"created_on", "TIMESTAMP WITH TIME ZONE"} in types(frame)
+    end
+  end
+
+  describe "from_structs/2" do
+    test "writes a row per struct, a column per plain field", %{tmp_dir: dir} do
+      countries = [
+        Country.new(%{"id" => 169, "country_name" => "Netherlands", "country_cca2" => "NL"}),
+        Country.new(%{"id" => 233, "country_name" => "United States", "unknown" => "kept in extra"})
+      ]
+
+      frame = CastorEDC.Dux.from_structs(countries, dir: dir, name: "countries")
+
+      assert types(frame) == [
+               {"country_cca2", "VARCHAR"},
+               {"country_cca3", "VARCHAR"},
+               {"country_id", "VARCHAR"},
+               {"country_name", "VARCHAR"},
+               {"country_tld", "VARCHAR"},
+               {"id", "BIGINT"}
+             ]
+
+      assert frame |> rows(["id"]) |> Enum.map(& &1["country_name"]) == ["Netherlands", "United States"]
+      assert File.exists?(Path.join(dir, "countries.parquet"))
+    end
+
+    test "reads a page, or a stream of the client's, into files of their own", %{tmp_dir: dir} do
+      page = %CastorEDC.Page{entries: [%{name: "a"}, %{name: "b"}]}
+      assert page |> CastorEDC.Dux.from_structs(dir: dir) |> rows(["name"]) == [%{"name" => "a"}, %{"name" => "b"}]
+
+      frame = Study.client() |> CastorEDC.Sites.stream_sites(Study.id()) |> CastorEDC.Dux.from_structs(dir: dir)
+      assert frame |> rows(["id"]) |> Enum.map(& &1["abbreviation"]) == ["AMS", nil]
+      assert {"deleted", "BOOLEAN"} in types(frame)
+
+      assert dir |> File.ls!() |> length() == 2
+    end
+
+    test "infers the types from the values, leaving nested objects and lists out", %{tmp_dir: dir} do
+      rows = [
+        %{
+          text: "a",
+          count: 1,
+          share: 0.5,
+          mixed_number: 1,
+          flag: true,
+          day: ~D[2026-11-08],
+          at: ~T[12:30:00],
+          local: ~N[2026-11-08 12:30:00],
+          utc: DateTime.new!(~D[2026-11-08], ~T[12:30:00], "Europe/Amsterdam", Tz.TimeZoneDatabase),
+          status: :open,
+          mixed: "1",
+          site: %{id: "site-1"},
+          tags: ["x"]
+        },
+        %{mixed_number: 2.5, mixed: 2, status: nil, text: "b"}
+      ]
+
+      frame = CastorEDC.Dux.from_structs(rows, dir: dir)
+
+      assert Map.new(types(frame)) == %{
+               "text" => "VARCHAR",
+               "count" => "BIGINT",
+               "share" => "DOUBLE",
+               "mixed_number" => "DOUBLE",
+               "flag" => "BOOLEAN",
+               "day" => "DATE",
+               "at" => "TIME",
+               "local" => "TIMESTAMP",
+               "utc" => "TIMESTAMP WITH TIME ZONE",
+               "status" => "VARCHAR",
+               "mixed" => "VARCHAR"
+             }
+
+      assert [first, second] = rows(frame, ["text"])
+      assert %{"mixed" => "1", "mixed_number" => 1.0, "status" => "open", "utc" => ~N[2026-11-08 11:30:00.000000]} = first
+      assert %{"mixed" => "2", "mixed_number" => 2.5, "status" => nil} = second
+    end
+
+    test "gives a frame without rows for no structs" do
+      frame = CastorEDC.Dux.from_structs([])
+
+      assert names(frame) == ["_empty"]
+      assert Dux.to_rows(frame) == []
+    end
+
+    test "raises the error of a stream whose request fails", %{tmp_dir: dir} do
+      client = Study.client(%{"/site" => CastorEDC.Test.json(%{"detail" => "Forbidden"}, status: 403)})
+
+      assert_raise CastorEDC.Error, fn ->
+        client |> CastorEDC.Sites.stream_sites(Study.id()) |> CastorEDC.Dux.from_structs(dir: dir)
+      end
     end
   end
 end

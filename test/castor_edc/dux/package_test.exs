@@ -18,7 +18,7 @@ defmodule CastorEDC.Dux.PackageTest do
 
     assert Version.match?(version, expected, allow_pre: true)
 
-    for doc <- ["README.md", "notebook/analysis.livemd"] do
+    for doc <- ["README.md", "notebook/analysis.livemd", "notebook/charts.livemd"] do
       requirements = Regex.scan(~r/\{:ex_castor_edc_dux, "([^"]+)"\}/, File.read!(doc), capture: :all_but_first)
 
       assert requirements != [], "#{doc} doesn't say how to install the package"

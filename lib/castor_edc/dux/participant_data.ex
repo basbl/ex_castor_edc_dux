@@ -32,6 +32,52 @@ defmodule CastorEDC.Dux.ParticipantData do
   @missing 95..99
 
   @doc false
+  # The paths of the files of an export already made: a CastorEDC.Export
+  # struct holding the zip in memory, its saved path or its unzipped files,
+  # or the path to a zip or to the directory it was unzipped into. Files
+  # that aren't on disk yet go in `into`.
+  @spec paths(CastorEDC.Export.t() | Path.t(), Path.t()) :: [Path.t()]
+  def paths(%CastorEDC.Export{type: type, format: format}, _into) when type != :participant_data or format != :csv,
+    do: raise(ArgumentError, "expected a participant data export in CSV, got #{inspect(type)} in #{inspect(format)}")
+
+  def paths(%CastorEDC.Export{files: [_file | _more] = files}, into) do
+    for file <- files do
+      case file do
+        {name, contents} -> write(into, to_string(name), contents)
+        path -> path
+      end
+    end
+  end
+
+  def paths(%CastorEDC.Export{data: data}, into) when is_binary(data), do: unzip(data, into)
+  def paths(%CastorEDC.Export{path: path}, into) when is_binary(path), do: paths(path, into)
+
+  def paths(%CastorEDC.Export{id: id}, _into),
+    do: raise(ArgumentError, "export #{id} hasn't been downloaded; download it, or pass the path it was saved to")
+
+  def paths(path, into) when is_binary(path) do
+    if File.dir?(path),
+      do: path |> Path.join("*.csv") |> Path.wildcard(),
+      else: path |> File.read!() |> unzip(into)
+  end
+
+  defp write(dir, name, contents) do
+    path = Path.join(dir, Path.basename(name))
+    File.mkdir_p!(dir)
+    File.write!(path, contents)
+    path
+  end
+
+  defp unzip(zip, into) do
+    File.mkdir_p!(into)
+
+    case :zip.unzip(zip, cwd: String.to_charlist(into)) do
+      {:ok, paths} -> Enum.map(paths, &to_string/1)
+      {:error, reason} -> raise ArgumentError, "couldn't unzip the export: #{inspect(reason)}"
+    end
+  end
+
+  @doc false
   # The frames of the export's files, given as paths, with the names of the
   # study's repeating data and surveys.
   @spec read([Path.t()], [String.t()], [String.t()], boolean()) :: CastorEDC.Dux.wide()
@@ -137,7 +183,7 @@ defmodule CastorEDC.Dux.ParticipantData do
         kind = kind(variables[variable])
         value = "#{missing_free(column, kind)} AS #{identifier(variable)}"
 
-        if missing_columns and kind != :string,
+        if missing_columns,
           do: [value, "#{missing(column, kind)} AS #{identifier(variable <> "_missing")}"],
           else: [value]
     end
@@ -161,24 +207,23 @@ defmodule CastorEDC.Dux.ParticipantData do
   defp kind(%{type: "time"}), do: :time
   defp kind(_other), do: :string
 
-  # Values marked missing are written as -95 to -99 in numbers and as the
-  # dates 1 January 2995 to 2999.
+  # Values marked missing are written as the dates 1 January 2995 to 2999
+  # in date fields, and as -95 to -99 in every other field, datetimes and
+  # option and text fields included.
   defp missing(column, kind) do
     whens = Enum.map_join(@missing, " ", &"WHEN #{literal(code_text(&1, kind))} THEN #{&1}")
     "CAST(CASE #{missing_part(column, kind)} #{whens} END AS SMALLINT)"
   end
-
-  defp missing_free(column, :string), do: column
 
   defp missing_free(column, kind) do
     codes = Enum.map_join(@missing, ", ", &literal(code_text(&1, kind)))
     "CASE WHEN #{missing_part(column, kind)} IN (#{codes}) THEN NULL ELSE #{value(column, kind)} END"
   end
 
-  defp missing_part(column, kind) when kind in [:date, :datetime], do: "left(#{column}, 10)"
+  defp missing_part(column, :date), do: "left(#{column}, 10)"
   defp missing_part(column, _kind), do: column
 
-  defp code_text(code, kind) when kind in [:date, :datetime], do: "01-01-29#{code}"
+  defp code_text(code, :date), do: "01-01-29#{code}"
   defp code_text(code, _kind), do: "-#{code}"
 
   defp value(column, :string), do: column

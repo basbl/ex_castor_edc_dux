@@ -1,0 +1,328 @@
+# Charting a Castor EDC study with Dux and VegaLite
+
+```elixir
+# To use checkouts instead of the published packages, set
+# CASTOR_EDC_DUX_PATH, CASTOR_EDC_KINO_PATH and CASTOR_EDC_PATH.
+dux = System.get_env("CASTOR_EDC_DUX_PATH")
+kino = System.get_env("CASTOR_EDC_KINO_PATH")
+core = System.get_env("CASTOR_EDC_PATH")
+
+Mix.install(
+  [
+    if(dux, do: {:ex_castor_edc_dux, path: dux}, else: {:ex_castor_edc_dux, "~> 0.2.0"}),
+    if(kino, do: {:ex_castor_edc_kino, path: kino}, else: {:ex_castor_edc_kino, "~> 0.1.0"}),
+    {:kino_dux, "~> 0.2.0"},
+    {:kino_vega_lite, "~> 0.1.13"}
+  ] ++ if(core, do: [{:ex_castor_edc, path: core, override: true}], else: [])
+)
+```
+
+## Introduction
+
+This notebook draws the charts a study usually needs: how enrolment is going, how complete and how missing the data is, how the surveys and queries stand, and how one variable is spread.
+Each chart shapes its data in DuckDB with a few Dux verbs, and draws the rows that come back with a VegaLite spec; change them to suit your study.
+
+## Connecting
+
+Add your API credentials as Livebook secrets: `CASTOR_EDC_CLIENT_ID` and `CASTOR_EDC_CLIENT_SECRET`, which you can create on your [account settings page](https://data.castoredc.com/account/settings).
+The connection cell below reads them from there, so they never appear in the notebook: pick the server your studies are on, and test the connection.
+
+<!-- livebook:{"attrs":"eyJhY2Nlc3NfdG9rZW5fc2VjcmV0IjoiQ0FTVE9SX0VEQ19BQ0NFU1NfVE9LRU4iLCJhdXRoIjoiY3JlZGVudGlhbHMiLCJjbGllbnRfaWRfc2VjcmV0IjoiQ0FTVE9SX0VEQ19DTElFTlRfSUQiLCJjbGllbnRfc2VjcmV0X3NlY3JldCI6IkNBU1RPUl9FRENfQ0xJRU5UX1NFQ1JFVCIsImN1c3RvbV9zZXJ2ZXIiOiIiLCJzZXJ2ZXIiOiJodHRwczovL2RhdGEuY2FzdG9yZWRjLmNvbSIsInZhcmlhYmxlIjoiY2xpZW50In0","chunks":null,"kind":"Elixir.CastorEDC.Kino.ConnectionCell","livebook_object":"smart_cell"} -->
+
+```elixir
+client =
+  CastorEDC.new(
+    client_id: System.fetch_env!("LB_CASTOR_EDC_CLIENT_ID"),
+    client_secret: System.fetch_env!("LB_CASTOR_EDC_CLIENT_SECRET"),
+    base_url: "https://data.castoredc.com"
+  )
+```
+
+Then pick the study to chart; the cell lists the studies the client can reach.
+
+<!-- livebook:{"attrs":"eyJjbGllbnQiOiJjbGllbnQiLCJzdHVkeV9pZCI6IiIsInN0dWR5X25hbWUiOiIiLCJ2YXJpYWJsZSI6InN0dWR5X2lkIn0","chunks":null,"kind":"Elixir.CastorEDC.Kino.StudyCell","livebook_object":"smart_cell"} -->
+
+```elixir
+
+```
+
+## Loading the study
+
+`chart` starts every chart with the same look: a fixed order of colours for categories, which tells them apart for colour-blind readers too, and a quiet grid.
+The frames' files go in one directory; remove it when you're done.
+
+```elixir
+alias VegaLite, as: Vl
+
+palette = ~w(#2a78d6 #eb6834 #1baf7a #eda100 #e87ba4 #008300 #6250d6 #e34948)
+
+chart = fn opts ->
+  Vl.new(Keyword.merge([width: 600, height: 260], opts))
+  |> Vl.config(
+    range: [category: palette],
+    view: [stroke: nil],
+    axis: [
+      grid_color: "#e6e5e0",
+      domain_color: "#a8a7a2",
+      tick_color: "#a8a7a2",
+      label_color: "#52514e",
+      title_color: "#52514e",
+      label_limit: 320
+    ],
+    legend: [label_color: "#52514e", title_color: "#52514e"]
+  )
+end
+
+dir = Path.join(System.tmp_dir!(), "castor_edc_charts_#{study_id}")
+```
+
+The study's structure, participants and values, with the options' names next to their values:
+
+```elixir
+{:ok, fields} = CastorEDC.Dux.fields(client, study_id, dir: dir)
+{:ok, participants} = CastorEDC.Dux.participants(client, study_id, dir: dir)
+{:ok, values} = CastorEDC.Dux.data_points(client, study_id, labels: true, dir: dir)
+
+# A join takes the right-hand frame as computed, so it's computed first;
+# the joined values are computed too, once, for every chart below to query.
+field_info = fields |> Dux.select([:field_id, :parent_name, :form_name, :field_type]) |> Dux.compute()
+values = values |> Dux.join(field_info, on: :field_id, how: :left) |> Dux.compute()
+
+participant_count = Dux.n_rows(participants)
+
+Kino.Markdown.new("#{participant_count} participants, #{Dux.n_rows(fields)} fields, #{Dux.n_rows(values)} values.")
+```
+
+## Enrolment
+
+How many participants each site had enrolled by each day, as a step for every participant created:
+
+```elixir
+enrolment =
+  participants
+  |> Dux.mutate_with(day: "CAST(created_on AS DATE)", site: "COALESCE(site_name, 'No site')")
+  |> Dux.group_by([:site, :day])
+  |> Dux.summarise_with(created: "COUNT(*)")
+  |> Dux.mutate_with(enrolled: "SUM(created) OVER (PARTITION BY site ORDER BY day)")
+  |> Dux.to_rows()
+
+chart.(title: "Participants enrolled")
+|> Vl.data_from_values(enrolment)
+|> Vl.mark(:line, interpolate: "step-after", stroke_width: 2, point: [size: 30, filled: true])
+|> Vl.encode_field(:x, "day", type: :temporal, title: nil)
+|> Vl.encode_field(:y, "enrolled", type: :quantitative, title: "Participants")
+|> Vl.encode_field(:color, "site", type: :nominal, title: "Site")
+|> Vl.encode(:tooltip, [[field: "site", title: "Site"], [field: "day", type: :temporal], [field: "enrolled", title: "Enrolled"]])
+```
+
+How far each participant has got through their forms:
+
+```elixir
+chart.(title: "Progress per participant", height: 200)
+|> Vl.data_from_values(participants |> Dux.select([:progress]) |> Dux.to_rows())
+|> Vl.mark(:bar, corner_radius_top_left: 4, corner_radius_top_right: 4, tooltip: true)
+|> Vl.encode_field(:x, "progress", type: :quantitative, bin: [step: 10, extent: [0, 100]], title: "Progress (%)")
+|> Vl.encode(:y, aggregate: :count, type: :quantitative, title: "Participants", axis: [tick_min_step: 1])
+|> Vl.encode(:color, value: hd(palette))
+```
+
+## Completeness
+
+The share of participants with a value, or a value marked missing, for each of the study's own fields, averaged per form.
+Forms of visits a participant hasn't reached yet count as incomplete.
+
+```elixir
+entered =
+  values
+  |> Dux.filter_with("source = 'study' AND (value IS NOT NULL OR missing IS NOT NULL)")
+  |> Dux.group_by(:field_id)
+  |> Dux.summarise_with(entered: "COUNT(DISTINCT participant_id)")
+  |> Dux.compute()
+
+completeness =
+  fields
+  |> Dux.filter_with("context = 'study'")
+  |> Dux.join(entered, on: :field_id, how: :left)
+  |> Dux.mutate_with(complete: "COALESCE(entered, 0) / #{max(participant_count, 1)}")
+  |> Dux.group_by([:parent_name, :form_name])
+  |> Dux.summarise_with(complete: "AVG(complete)", fields: "COUNT(*)")
+  |> Dux.mutate_with(form: "parent_name || ' / ' || form_name")
+  |> Dux.to_rows()
+
+chart.(title: "Mean completeness per form", height: [step: 22])
+|> Vl.data_from_values(completeness)
+|> Vl.mark(:bar, corner_radius_end: 4, tooltip: true)
+|> Vl.encode_field(:y, "form", type: :nominal, sort: "-x", title: nil)
+|> Vl.encode_field(:x, "complete", type: :quantitative, axis: [format: "%"], scale: [domain: [0, 1]], title: nil)
+|> Vl.encode(:color, value: hd(palette))
+```
+
+## Missing data
+
+Values marked missing, per form and by their reason.
+
+```elixir
+reasons = ["Measurement failed", "Not applicable", "Not asked", "Asked but unknown", "Not done"]
+
+missing =
+  values
+  |> Dux.filter_with("missing IS NOT NULL")
+  |> Dux.mutate_with(form: "COALESCE(form_name, 'Other')")
+  |> Dux.group_by([:form, :missing])
+  |> Dux.summarise_with(values: "COUNT(*)")
+  |> Dux.to_rows()
+  |> Enum.map(&Map.put(&1, "reason", Enum.at(reasons, &1["missing"] - 95)))
+
+if missing == [] do
+  Kino.Markdown.new("No values are marked missing.")
+else
+  chart.(title: "Values marked missing, per form", height: [step: 22])
+  |> Vl.data_from_values(missing)
+  |> Vl.mark(:bar, stroke: "white", stroke_width: 2, tooltip: true)
+  |> Vl.encode_field(:y, "form", type: :nominal, sort: "-x", title: nil)
+  |> Vl.encode_field(:x, "values", type: :quantitative, aggregate: :sum, title: "Values")
+  |> Vl.encode_field(:color, "reason", type: :nominal, title: "Reason", sort: reasons)
+  |> Vl.encode_field(:order, "missing", type: :quantitative)
+end
+```
+
+## Data entry
+
+How many values were last changed in each week, for the study's own forms and its repeating data and surveys:
+
+```elixir
+activity =
+  values
+  |> Dux.filter_with("updated_on IS NOT NULL")
+  |> Dux.mutate_with(day: "CAST(updated_on AS DATE)")
+  |> Dux.group_by([:day, :source])
+  |> Dux.summarise_with(values: "COUNT(*)")
+  |> Dux.to_rows()
+
+chart.(title: "Values changed per week")
+|> Vl.data_from_values(activity)
+|> Vl.mark(:bar, stroke: "white", stroke_width: 1, tooltip: true)
+|> Vl.encode_field(:x, "day", type: :temporal, time_unit: :yearweek, title: nil)
+|> Vl.encode_field(:y, "values", type: :quantitative, aggregate: :sum, title: "Values")
+|> Vl.encode_field(:color, "source", type: :nominal, title: "Source", sort: ["study", "repeating_data", "survey"])
+```
+
+## Surveys
+
+Where each survey package stands for the participants it was sent to:
+
+```elixir
+{:ok, packages} = CastorEDC.Dux.survey_package_instances(client, study_id, dir: dir)
+
+statuses =
+  packages
+  |> Dux.group_by([:survey_package_name, :status])
+  |> Dux.summarise_with(instances: "COUNT(*)")
+  |> Dux.to_rows()
+
+if statuses == [] do
+  Kino.Markdown.new("No survey packages have been sent.")
+else
+  chart.(title: "Survey packages by status", height: [step: 28])
+  |> Vl.data_from_values(statuses)
+  |> Vl.mark(:bar, stroke: "white", stroke_width: 2, tooltip: true)
+  |> Vl.encode_field(:y, "survey_package_name", type: :nominal, title: nil)
+  |> Vl.encode_field(:x, "instances", type: :quantitative, aggregate: :sum, title: "Instances", axis: [tick_min_step: 1])
+  |> Vl.encode_field(:color, "status", type: :nominal, title: "Status")
+end
+```
+
+## Queries
+
+The queries raised on the study's values, by status:
+
+```elixir
+{:ok, queries} = CastorEDC.Dux.queries(client, study_id, dir: dir)
+
+by_status =
+  queries
+  |> Dux.group_by(:status)
+  |> Dux.summarise_with(queries: "COUNT(*)")
+  |> Dux.to_rows()
+
+if by_status == [] do
+  Kino.Markdown.new("No queries have been raised.")
+else
+  chart.(title: "Queries by status", height: [step: 28])
+  |> Vl.data_from_values(by_status)
+  |> Vl.mark(:bar, corner_radius_end: 4, tooltip: true)
+  |> Vl.encode_field(:y, "status", type: :nominal, sort: "-x", title: nil)
+  |> Vl.encode_field(:x, "queries", type: :quantitative, title: "Queries", axis: [tick_min_step: 1])
+  |> Vl.encode(:color, value: hd(palette))
+end
+```
+
+## One variable
+
+Pick a numeric field to see its values per site as box plots, or an option field to see how often each option was chosen, by name.
+The box spans the middle half of the values, the line in it is the median, and dots are the values far outside the rest.
+
+```elixir
+site_names = participants |> Dux.select([:participant_id, :site_name]) |> Dux.compute()
+
+numeric =
+  fields
+  |> Dux.filter_with("value_type = 'number'")
+  |> Dux.to_columns()
+  |> Map.get("variable_name")
+  |> MapSet.new()
+
+variables =
+  fields
+  |> Dux.filter_with("value_type = 'number' OR field_type IN ('radio', 'dropdown', 'checkbox')")
+  |> Dux.to_columns()
+  |> Map.get("variable_name", [])
+
+distribution = fn variable ->
+  rows = Dux.filter_with(values, "variable_name = '#{String.replace(variable, "'", "''")}' AND value IS NOT NULL")
+
+  cond do
+    Dux.n_rows(rows) == 0 ->
+      Kino.Markdown.new("#{variable} has no values yet.")
+
+    MapSet.member?(numeric, variable) ->
+      chart.(title: variable, height: [step: 40])
+      |> Vl.data_from_values(
+        rows
+        |> Dux.join(site_names, on: :participant_id, how: :left)
+        |> Dux.mutate_with(number: "CAST(value AS DOUBLE)", site: "COALESCE(site_name, 'No site')")
+        |> Dux.select([:site, :number, :participant_id])
+        |> Dux.to_rows()
+      )
+      |> Vl.mark(:boxplot, extent: 1.5, size: 24, median: [color: "white"], outliers: [size: 30])
+      |> Vl.encode_field(:y, "site", type: :nominal, title: nil)
+      |> Vl.encode_field(:x, "number", type: :quantitative, title: variable, scale: [zero: false])
+      |> Vl.encode_field(:color, "site", type: :nominal, legend: nil)
+
+    true ->
+      # A checkbox's label holds every checked option's name, `;` between them.
+      chosen =
+        rows
+        |> Dux.mutate_with(option: "UNNEST(string_split(label, ';'))")
+        |> Dux.group_by(:option)
+        |> Dux.summarise_with(values: "COUNT(*)")
+        |> Dux.to_rows()
+
+      chart.(title: variable, height: [step: 22])
+      |> Vl.data_from_values(chosen)
+      |> Vl.mark(:bar, corner_radius_end: 4, tooltip: true)
+      |> Vl.encode_field(:y, "option", type: :nominal, sort: "-x", title: nil)
+      |> Vl.encode_field(:x, "values", type: :quantitative, title: "Values", axis: [tick_min_step: 1])
+      |> Vl.encode(:color, value: hd(palette))
+  end
+end
+
+picker = Kino.Input.select("Field", Enum.map(variables, &{&1, &1}))
+frame = Kino.Frame.new()
+
+# The picker starts on the first field; it can't be read before it's rendered.
+Kino.Frame.render(frame, distribution.(hd(variables)))
+Kino.listen(picker, fn event -> Kino.Frame.render(frame, distribution.(event.value)) end)
+
+Kino.Layout.grid([picker, frame])
+```

@@ -9,7 +9,7 @@ core = System.get_env("CASTOR_EDC_PATH")
 
 Mix.install(
   [
-    if(dux, do: {:ex_castor_edc_dux, path: dux}, else: {:ex_castor_edc_dux, "~> 0.1.0"}),
+    if(dux, do: {:ex_castor_edc_dux, path: dux}, else: {:ex_castor_edc_dux, "~> 0.2.0"}),
     if(kino, do: {:ex_castor_edc_kino, path: kino}, else: {:ex_castor_edc_kino, "~> 0.1.0"}),
     {:kino_dux, "~> 0.2.0"}
   ] ++ if(core, do: [{:ex_castor_edc, path: core, override: true}], else: [])
@@ -54,7 +54,7 @@ dir = Path.join(System.tmp_dir!(), "castor_edc_#{study_id}")
 ## The study's structure
 
 `fields/3` has a row per field that holds values, in the order the study shows them: where it collects data, its type, and its option group.
-`option_groups/3` has a row per option, to join on `option_group_id`.
+`option_groups/3` has a row per option, to join on `option_group_id`, though `data_points/3` can give the options' names itself (see below).
 
 ```elixir
 {:ok, fields} = CastorEDC.Dux.fields(client, study_id, dir: dir)
@@ -71,7 +71,7 @@ fields
 {:ok, sites} = CastorEDC.Dux.sites(client, study_id, dir: dir)
 
 participants
-|> Dux.join(Dux.select(sites, [:site_id, :name]), on: :site_id, how: :left)
+|> Dux.join(sites |> Dux.select([:site_id, :name]) |> Dux.compute(), on: :site_id, how: :left)
 |> Dux.group_by(:name)
 |> Dux.summarise_with(participants: "COUNT(participant_id)", mean_progress: "AVG(progress)")
 |> Dux.compute()
@@ -96,11 +96,34 @@ Values marked missing are nulls, with their codes (95 to 99) in the `<variable>_
 Map.keys(repeating_data) ++ Map.keys(surveys)
 ```
 
-`data_points/3` reads the same values through the API instead, page by page, with a row per value, which suits filtering and pivoting:
+An export you already downloaded reads the same way, without running another: pass the `CastorEDC.Export` struct, or the path to its zip or the directory it was unzipped into, as `from:`.
+Unzipped files are read where they are; a zip goes into `<dir>/participant_data` first.
 
 ```elixir
-{:ok, values} = CastorEDC.Dux.data_points(client, study_id, dir: dir)
+{:ok, export} = CastorEDC.Export.participant_data(client, study_id, format: :csv)
 
+{:ok, %{study: downloaded}} =
+  CastorEDC.Dux.participant_data(client, study_id, from: export, dir: Path.join(dir, "downloaded"))
+
+Dux.n_rows(downloaded)
+```
+
+`data_points/3` reads the same values through the API instead, page by page, with a row per value, which suits filtering and pivoting.
+With `labels: true`, a `label` column holds the names of the chosen options, as the user saw them, next to their values:
+
+```elixir
+{:ok, values} = CastorEDC.Dux.data_points(client, study_id, labels: true, dir: dir)
+
+values
+|> Dux.filter_with("label IS NOT NULL")
+|> Dux.group_by([:variable_name, :label])
+|> Dux.summarise_with(count: "COUNT(*)")
+|> Dux.compute()
+```
+
+Values marked missing have their code in `missing`:
+
+```elixir
 values
 |> Dux.filter_with("missing IS NOT NULL")
 |> Dux.group_by([:variable_name, :missing])
@@ -108,4 +131,63 @@ values
 |> Dux.compute()
 ```
 
-With `format: :wide`, it gives the same shape as `participant_data/3`, with a column per variable.
+With `format: :wide`, it gives the same shape as `participant_data/3`, with a column per variable; `labels: true` puts the options' names in its radio and dropdown columns.
+
+## Domains
+
+A study whose fields are mapped to domains, as in CDISC SDTM, can be exported grouped by domain.
+`domains/3` runs that export and gives a frame per domain, keyed by its abbreviation, with a row per participant per visit, repeating data instance or survey; `labels: true` adds the options' names.
+
+```elixir
+{:ok, domains} = CastorEDC.Dux.domains(client, study_id, labels: true, missing_columns: true, dir: dir)
+
+Map.new(domains, fn {domain, frame} -> {domain, Dux.n_rows(frame)} end)
+```
+
+## Surveys, repeating data and queries
+
+`survey_package_instances/3` has a row per survey package sent to (or started for) a participant, with its progress and when it was sent and finished:
+
+```elixir
+{:ok, packages} = CastorEDC.Dux.survey_package_instances(client, study_id, dir: dir)
+
+packages
+|> Dux.group_by([:survey_package_name, :status])
+|> Dux.summarise_with(instances: "COUNT(*)", mean_progress: "AVG(progress)")
+|> Dux.compute()
+```
+
+`repeating_data_instances/3` has a row per repeating data instance, such as each adverse event; their values are in the frames above, by `instance_id`:
+
+```elixir
+{:ok, instances} = CastorEDC.Dux.repeating_data_instances(client, study_id, dir: dir)
+
+instances
+|> Dux.filter_with("NOT archived")
+|> Dux.group_by(:repeating_data_name)
+|> Dux.summarise_with(instances: "COUNT(*)", participants: "COUNT(DISTINCT participant_id)")
+|> Dux.compute()
+```
+
+`queries/3` has a row per query raised on a value; join it with `fields/3` for the field's name:
+
+```elixir
+{:ok, queries} = CastorEDC.Dux.queries(client, study_id, dir: dir)
+
+queries
+|> Dux.join(fields |> Dux.select([:field_id, :variable_name]) |> Dux.compute(), on: :field_id, how: :left)
+|> Dux.select([:participant_id, :variable_name, :status, :first_query_remark, :remarks, :created_on])
+|> Dux.compute()
+```
+
+## Anything else
+
+`from_structs/2` makes a frame from any other result of the client, a list, page or stream of its structs, such as the study's visits.
+Its types come from the values, as nothing else describes them, and nested objects are left out.
+
+```elixir
+client
+|> CastorEDC.Forms.stream_visits(study_id)
+|> CastorEDC.Dux.from_structs(dir: dir)
+|> Dux.compute()
+```

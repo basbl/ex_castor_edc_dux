@@ -14,7 +14,7 @@ defmodule CastorEDC.Dux.ParticipantDataTest do
   @study_csv @bom <>
                ~s("Participant Id";"Participant Status";"Site Abbreviation";"Participant Creation Date";weight;year;visit;seen;time;sex;"family#Renal disease";family#Deafness;note\n) <>
                ~s(P1;"Not Set";AMS;"07-10-2026 21:06:33";72.5;1980;07-10-2026;"07-10-2026 12:30";12:30;1;1;0;"fine; thanks"\n) <>
-               ~s(P2;"Not Set";UTR;"08-10-2026 10:00:33";-98;-95;01-01-2997;;;;0;0;\n)
+               ~s(P2;"Not Set";UTR;"08-10-2026 10:00:33";-98;-95;01-01-2997;-96;;-99;0;0;-98\n)
 
   @repeating_csv @bom <>
                    ~s("Participant Id";"Participant Status";"Repeating Data Creation Date";"Repeating data Name Custom";"Repeating data Parent";sys\n) <>
@@ -131,11 +131,13 @@ defmodule CastorEDC.Dux.ParticipantDataTest do
       assert {:ok, %{study: study}} =
                CastorEDC.Dux.participant_data(client(), Study.id(), poll_interval: 0, missing_columns: true, dir: dir)
 
-      assert study |> rows() |> Enum.map(&{&1["weight_missing"], &1["year_missing"], &1["visit_missing"]}) ==
-               [{nil, nil, nil}, {98, 95, 97}]
+      missing = ~w(weight_missing year_missing visit_missing seen_missing time_missing sex_missing note_missing)
+
+      assert study |> rows() |> Enum.map(&Enum.map(missing, fn column -> &1[column] end)) ==
+               [[nil, nil, nil, nil, nil, nil, nil], [98, 95, 97, 96, nil, 99, 98]]
 
       assert {"visit_missing", "SMALLINT"} in types(study)
-      refute "sex_missing" in names(study)
+      refute "family_0_missing" in names(study)
     end
 
     test "queues a CSV export with the filters given", %{tmp_dir: dir} do
@@ -160,6 +162,88 @@ defmodule CastorEDC.Dux.ParticipantDataTest do
                CastorEDC.Dux.participant_data(client, Study.id(), poll_interval: 0, dir: dir)
     end
 
+    test "reads a downloaded export without running another", %{tmp_dir: dir} do
+      export = %CastorEDC.Export{id: "export-1", type: :participant_data, format: :csv, data: zip(@files)}
+
+      assert {:ok, %{study: study, repeating_data: %{"Blood pressure" => _}, surveys: %{"GAD-7 (short)" => _}}} =
+               CastorEDC.Dux.participant_data(no_export_client(), Study.id(), from: export, dir: dir)
+
+      assert study |> rows() |> Enum.map(& &1["weight"]) == [72.5, nil]
+      assert dir |> Path.join("participant_data") |> File.ls!() |> length() == 8
+    end
+
+    test "writes an export unzipped in memory to the directory", %{tmp_dir: dir} do
+      export = %CastorEDC.Export{id: "export-1", type: :participant_data, format: :csv, files: @files}
+
+      assert {:ok, %{study: study}} =
+               CastorEDC.Dux.participant_data(no_export_client(), Study.id(), from: export, dir: dir)
+
+      assert study |> rows() |> length() == 2
+      assert dir |> Path.join("participant_data") |> File.ls!() |> length() == 8
+    end
+
+    test "reads an export saved as a zip, or unzipped into a directory", %{tmp_dir: dir} do
+      zip = Path.join(dir, "export.zip")
+      File.write!(zip, zip(@files))
+
+      unzipped = Path.join(dir, "unzipped")
+      File.mkdir_p!(unzipped)
+
+      paths =
+        for {name, contents} <- @files do
+          path = Path.join(unzipped, name)
+          File.write!(path, contents)
+          path
+        end
+
+      saved = %CastorEDC.Export{id: "export-1", type: :participant_data, format: :csv, path: zip}
+      extracted = %CastorEDC.Export{id: "export-1", type: :participant_data, format: :csv, path: unzipped, files: paths}
+
+      for {from, index} <- Enum.with_index([zip, unzipped, saved, extracted]) do
+        assert {:ok, %{study: study, surveys: surveys}} =
+                 CastorEDC.Dux.participant_data(no_export_client(), Study.id(),
+                   from: from,
+                   dir: Path.join(dir, "run_#{index}")
+                 )
+
+        assert study |> rows() |> Enum.map(& &1["participant_id"]) == ["P1", "P2"]
+        assert Map.has_key?(surveys, "GAD-7 (short)")
+      end
+
+      # Unzipped files are read where they are.
+      refute File.exists?(Path.join([dir, "run_1", "participant_data"]))
+      refute File.exists?(Path.join([dir, "run_3", "participant_data"]))
+    end
+
+    test "refuses what it can't read as a participant data export", %{tmp_dir: dir} do
+      client = no_export_client()
+
+      assert_raise ArgumentError, ~r/participant data export in CSV, got :participant_data in :spss/, fn ->
+        CastorEDC.Dux.participant_data(client, Study.id(),
+          from: %CastorEDC.Export{id: "e", type: :participant_data, format: :spss, data: "zip"},
+          dir: dir
+        )
+      end
+
+      assert_raise ArgumentError, ~r/export e hasn't been downloaded/, fn ->
+        CastorEDC.Dux.participant_data(client, Study.id(),
+          from: %CastorEDC.Export{id: "e", type: :participant_data, format: :csv},
+          dir: dir
+        )
+      end
+
+      assert_raise ArgumentError, ~r/couldn't unzip the export/, fn ->
+        CastorEDC.Dux.participant_data(client, Study.id(),
+          from: %CastorEDC.Export{id: "e", type: :participant_data, format: :csv, data: "not a zip"},
+          dir: dir
+        )
+      end
+
+      assert_raise ArgumentError, ~r/takes no \[:filters\]/, fn ->
+        CastorEDC.Dux.participant_data(client, Study.id(), from: "export.zip", filters: [site_ids: ["s"]], dir: dir)
+      end
+    end
+
     test "leaves out a value it can't read", %{tmp_dir: dir} do
       File.write!(Path.join(dir, "Study_export_1.csv"), "\"Participant Id\";weight\nP1;heavy\n")
       File.write!(Path.join(dir, "study_variablelist.csv"), @variables <> "V;F;1;1;numeric;numeric;weight;W;\n")
@@ -167,6 +251,12 @@ defmodule CastorEDC.Dux.ParticipantDataTest do
       assert %{study: study} = dir |> File.ls!() |> Enum.map(&Path.join(dir, &1)) |> ParticipantData.read([], [], false)
       assert rows(study) == [%{"participant_id" => "P1", "weight" => nil}]
     end
+  end
+
+  # A client whose exports fail, to show an export given as :from is read
+  # without running another.
+  defp no_export_client do
+    client(%{"/export" => Test.json(%{"detail" => "No exports here"}, status: 500)})
   end
 
   defp client(overrides \\ %{}) do
