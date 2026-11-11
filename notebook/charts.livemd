@@ -9,7 +9,7 @@ core = System.get_env("CASTOR_EDC_PATH")
 
 Mix.install(
   [
-    if(dux, do: {:ex_castor_edc_dux, path: dux}, else: {:ex_castor_edc_dux, "~> 0.1.0"}),
+    if(dux, do: {:ex_castor_edc_dux, path: dux}, else: {:ex_castor_edc_dux, "~> 0.2.0"}),
     if(kino, do: {:ex_castor_edc_kino, path: kino}, else: {:ex_castor_edc_kino, "~> 0.1.0"}),
     {:kino_dux, "~> 0.2.0"},
     {:kino_vega_lite, "~> 0.1.13"}

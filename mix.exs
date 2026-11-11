@@ -1,7 +1,7 @@
 defmodule CastorEDC.Dux.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
   @source_url "https://github.com/basbl/ex_castor_edc_dux"
 
   # Decimal 2.x, which adbc 0.11 (under Dux 0.3) requires, has two

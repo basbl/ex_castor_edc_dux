@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.2.0] - Unreleased
 
 ### Added
 
@@ -38,4 +38,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   It takes a few requests however big the study is.
 - A Livebook, `notebook/analysis.livemd`, that loads a study into frames and takes a first look at it.
 
+[0.2.0]: https://hex.pm/packages/ex_castor_edc_dux/0.2.0
 [0.1.0]: https://hex.pm/packages/ex_castor_edc_dux/0.1.0

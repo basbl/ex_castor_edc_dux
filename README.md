@@ -12,7 +12,7 @@ Data streams from the API into Parquet files, so it never has to fit in memory, 
 ```elixir
 def deps do
   [
-    {:ex_castor_edc_dux, "~> 0.1.0"}
+    {:ex_castor_edc_dux, "~> 0.2.0"}
   ]
 end
 ```
